@@ -1,0 +1,66 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    color-scheme: dark;
+  }
+
+  * {
+    box-sizing: border-box;
+  }
+
+  html {
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  body {
+    @apply bg-bg-primary text-text-primary font-sans;
+    min-height: 100dvh;
+  }
+
+  ::selection {
+    background-color: theme('colors.accent.muted');
+    color: theme('colors.accent.DEFAULT');
+  }
+
+  ::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+
+  ::-webkit-scrollbar-track {
+    background: theme('colors.bg.primary');
+  }
+
+  ::-webkit-scrollbar-thumb {
+    background: theme('colors.bg.border');
+    border-radius: 3px;
+  }
+
+  ::-webkit-scrollbar-thumb:hover {
+    background: theme('colors.text.muted');
+  }
+}
+
+@layer components {
+  .card {
+    @apply bg-bg-secondary border border-bg-border rounded-lg;
+  }
+
+  .input {
+    @apply w-full bg-bg-elevated border border-bg-border rounded px-3 py-2
+           text-text-primary placeholder:text-text-muted
+           focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent
+           transition-colors text-sm;
+  }
+
+  .skeleton {
+    @apply bg-gradient-to-r from-bg-secondary via-bg-elevated to-bg-secondary
+           bg-[length:200%_100%] animate-shimmer rounded;
+  }
+}
