@@ -1,0 +1,26 @@
+{
+  "name": "@outreachos/ai",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Anthropic Claude API integration layer for OutreachOS",
+  "main": "./dist/index.js",
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "test": "vitest run --coverage",
+    "typecheck": "tsc --noEmit",
+    "clean": "rm -rf dist coverage"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.24.0",
+    "@outreachos/shared": "*",
+    "pino": "^9.1.0",
+    "zod": "^3.23.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "@vitest/coverage-v8": "^1.5.0",
+    "typescript": "^5.4.0",
+    "vitest": "^1.5.0"
+  }
+}
