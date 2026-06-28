@@ -14,6 +14,7 @@
   },
   "dependencies": {
     "@outreachos/shared": "*",
+    "@sentry/nextjs": "^8.0.0",
     "@supabase/ssr": "^0.3.0",
     "@supabase/supabase-js": "^2.43.0",
     "@tanstack/react-table": "^8.17.0",

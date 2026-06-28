@@ -16,6 +16,7 @@ import express from 'express';
 import { pinoHttp } from 'pino-http';
 import { Redis } from 'ioredis';
 import { logger } from './logger.js';
+import { initSentry } from './sentry.js';
 import { applySecurityMiddleware, createApiRateLimiter } from './middleware/security.js';
 import { authRouter } from './routes/auth.js';
 import { prospectsRouter } from './routes/prospects.js';
@@ -25,6 +26,7 @@ import { inboxRouter } from './routes/inbox.js';
 import { analyticsRouter } from './routes/analytics.js';
 import { templatesRouter } from './routes/templates.js';
 
+initSentry();
 const env = getEnv();
 
 const app = express();
@@ -65,6 +67,16 @@ app.get('/health', (_req, res) => {
 app.use((_req, res) => {
   res.status(404).json({ success: false, error: 'Not found.' });
 });
+
+app.use(
+  (err: Error, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
+    import('./sentry.js').then(({ captureException }) => {
+      captureException(err);
+    }).catch(() => undefined);
+    logger.error({ err }, 'Unhandled error');
+    res.status(500).json({ success: false, error: 'Internal server error.' });
+  },
+);
 
 app.listen(env.PORT, () => {
   logger.info({ port: env.PORT, env: env.NODE_ENV }, 'OutreachOS API server started');

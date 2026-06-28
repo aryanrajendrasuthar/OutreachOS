@@ -14,8 +14,9 @@ import { createClient } from '@supabase/supabase-js';
 import type { Router } from 'express';
 import { Router as ExpressRouter } from 'express';
 import type { Redis } from 'ioredis';
+import { eq } from 'drizzle-orm';
 import { z } from 'zod';
-import { getEnv } from '@outreachos/shared';
+import { getEnv, encrypt, users, getDb } from '@outreachos/shared';
 import { requireAuth } from '../middleware/auth.js';
 import { createAuthRateLimiter } from '../middleware/security.js';
 import { logger } from '../logger.js';
@@ -142,6 +143,28 @@ export function authRouter(redis: Redis): Router {
 
   router.get('/me', requireAuth, (req, res) => {
     res.json({ success: true, data: { id: req.user.id, email: req.user.email } });
+  });
+
+  const updateSessionSchema = z.object({
+    linkedinSessionCookie: z.string().min(10).max(4096),
+  });
+
+  router.patch('/session-cookie', requireAuth, async (req, res) => {
+    const parsed = updateSessionSchema.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({ success: false, error: parsed.error.flatten() });
+      return;
+    }
+
+    const encryptedCookie = encrypt(parsed.data.linkedinSessionCookie, env.ENCRYPTION_KEY);
+    const db = getDb(env.DATABASE_URL!);
+    await db
+      .update(users)
+      .set({ linkedinSessionCookie: encryptedCookie, updatedAt: new Date() })
+      .where(eq(users.id, req.user.id));
+
+    logger.info({ userId: req.user.id }, 'LinkedIn session cookie updated');
+    res.json({ success: true });
   });
 
   return router;

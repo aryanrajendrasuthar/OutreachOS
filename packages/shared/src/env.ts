@@ -38,7 +38,9 @@ const serverEnvSchema = z.object({
   JWT_SECRET: z.string().min(32),
   SESSION_SECRET: z.string().min(32),
 
+  DATABASE_URL: z.string().min(1).optional(),
   SENTRY_DSN: z.string().url().optional(),
+  NEXT_PUBLIC_SENTRY_DSN: z.string().url().optional(),
 });
 
 export type ServerEnv = z.infer<typeof serverEnvSchema>;
