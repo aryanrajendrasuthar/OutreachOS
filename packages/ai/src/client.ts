@@ -10,18 +10,18 @@
  * For licensing inquiries: aryanrajendrasuthar@gmail.com
  */
 
-import Anthropic from '@anthropic-ai/sdk';
+import Groq from 'groq-sdk';
 import { getEnv } from '@outreachos/shared';
 
-let _client: Anthropic | null = null;
+let _client: Groq | null = null;
 
-export function getAnthropicClient(): Anthropic {
+export function getGroqClient(): Groq {
   if (!_client) {
     const env = getEnv();
-    _client = new Anthropic({ apiKey: env.ANTHROPIC_API_KEY });
+    _client = new Groq({ apiKey: env.GROQ_API_KEY });
   }
   return _client;
 }
 
-export const MODEL = 'claude-sonnet-4-6';
+export const MODEL = 'llama-3.3-70b-versatile';
 export const MAX_TOKENS = 1000;

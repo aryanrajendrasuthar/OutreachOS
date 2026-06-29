@@ -14,21 +14,21 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mockCreate = vi.fn();
 
-vi.mock('@anthropic-ai/sdk', () => ({
+vi.mock('groq-sdk', () => ({
   default: vi.fn().mockImplementation(() => ({
-    messages: { create: mockCreate },
+    chat: { completions: { create: mockCreate } },
   })),
 }));
 
 vi.mock('@outreachos/shared', () => ({
   getEnv: () => ({
-    ANTHROPIC_API_KEY: 'sk-ant-test',
+    GROQ_API_KEY: 'gsk_test',
     NODE_ENV: 'test',
   }),
 }));
 
 function makeTextResponse(text: string) {
-  return { content: [{ type: 'text', text }] };
+  return { choices: [{ message: { content: text } }] };
 }
 
 const PROSPECT = {

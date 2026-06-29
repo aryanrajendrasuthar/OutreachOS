@@ -2,7 +2,7 @@
   "name": "@outreachos/ai",
   "version": "1.0.0",
   "private": true,
-  "description": "Anthropic Claude API integration layer for OutreachOS",
+  "description": "AI services integration layer for OutreachOS",
   "main": "./dist/index.js",
   "scripts": {
     "build": "tsc",
@@ -12,7 +12,7 @@
     "clean": "rm -rf dist coverage"
   },
   "dependencies": {
-    "@anthropic-ai/sdk": "^0.24.0",
+    "groq-sdk": "^0.8.0",
     "@outreachos/shared": "*",
     "pino": "^9.1.0",
     "zod": "^3.23.0"

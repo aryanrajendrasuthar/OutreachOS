@@ -12,7 +12,7 @@
 
 import { z } from 'zod';
 import type { ReplyIntent, SequenceStep } from '@outreachos/shared';
-import { getAnthropicClient, MAX_TOKENS, MODEL } from './client.js';
+import { getGroqClient, MAX_TOKENS, MODEL } from './client.js';
 
 interface ProspectContext {
   fullName: string;
@@ -31,19 +31,21 @@ interface Message {
 }
 
 async function chat(systemPrompt: string, userMessage: string): Promise<string> {
-  const client = getAnthropicClient();
-  const response = await client.messages.create({
+  const client = getGroqClient();
+  const response = await client.chat.completions.create({
     model: MODEL,
     max_tokens: MAX_TOKENS,
-    system: systemPrompt,
-    messages: [{ role: 'user', content: userMessage }],
+    messages: [
+      { role: 'system', content: systemPrompt },
+      { role: 'user', content: userMessage },
+    ],
   });
 
-  const block = response.content[0];
-  if (!block || block.type !== 'text') {
+  const text = response.choices[0]?.message?.content;
+  if (!text) {
     throw new Error('Unexpected response format from AI API.');
   }
-  return block.text.trim();
+  return text.trim();
 }
 
 export async function scoreProspect(

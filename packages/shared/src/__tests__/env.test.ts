@@ -23,7 +23,7 @@ const VALID_ENV: Record<string, string> = {
   REDIS_URL: 'redis://localhost:6379',
   REDIS_TOKEN: 'test-token',
   ENCRYPTION_KEY: 'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=',
-  ANTHROPIC_API_KEY: 'sk-ant-test-key',
+  GROQ_API_KEY: 'gsk_test_key_value',
   RESEND_API_KEY: 're_test_key',
   RESEND_FROM_EMAIL: 'noreply@outreachos.com',
   JWT_SECRET: 'a'.repeat(32),
@@ -57,7 +57,7 @@ describe('getEnv', () => {
   });
 
   it('throws when a required var is missing', async () => {
-    delete process.env['ANTHROPIC_API_KEY'];
+    delete process.env['GROQ_API_KEY'];
     const { getEnv } = await import('../env.js');
     expect(() => getEnv()).toThrow('Invalid environment variables');
   });
@@ -68,8 +68,8 @@ describe('getEnv', () => {
     expect(() => getEnv()).toThrow('Invalid environment variables');
   });
 
-  it('throws when ANTHROPIC_API_KEY does not start with sk-ant-', async () => {
-    process.env['ANTHROPIC_API_KEY'] = 'sk-openai-oops';
+  it('throws when GROQ_API_KEY does not start with gsk_', async () => {
+    process.env['GROQ_API_KEY'] = 'sk-ant-oops';
     const { getEnv } = await import('../env.js');
     expect(() => getEnv()).toThrow('Invalid environment variables');
   });

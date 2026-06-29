@@ -30,7 +30,7 @@ const serverEnvSchema = z.object({
     .string()
     .min(44, 'ENCRYPTION_KEY must be a 256-bit base64 value (at least 44 chars)'),
 
-  ANTHROPIC_API_KEY: z.string().startsWith('sk-ant-'),
+  GROQ_API_KEY: z.string().startsWith('gsk_'),
 
   RESEND_API_KEY: z.string().startsWith('re_'),
   RESEND_FROM_EMAIL: z.string().email(),
