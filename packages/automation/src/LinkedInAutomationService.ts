@@ -11,7 +11,7 @@
  */
 
 import { chromium } from 'playwright-extra';
-import StealthPlugin from 'playwright-extra-plugin-stealth';
+import StealthPlugin from 'puppeteer-extra-plugin-stealth';
 import type { Browser, BrowserContext, Page } from 'playwright';
 import pino from 'pino';
 import { decrypt } from '@outreachos/shared';
