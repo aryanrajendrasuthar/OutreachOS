@@ -24,7 +24,7 @@
     "date-fns": "^3.6.0",
     "framer-motion": "^11.2.0",
     "isomorphic-dompurify": "^2.14.0",
-    "next": "14.2.3",
+    "next": "^14.2.29",
     "react": "^18.3.0",
     "react-dom": "^18.3.0",
     "recharts": "^2.12.0",
