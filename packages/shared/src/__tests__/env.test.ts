@@ -15,11 +15,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 const VALID_ENV: Record<string, string> = {
   NODE_ENV: 'test',
   PORT: '3001',
+  DEV_BYPASS_AUTH: 'true',
   NEXT_PUBLIC_APP_URL: 'http://localhost:3000',
   NEXT_PUBLIC_API_URL: 'http://localhost:3001',
-  NEXT_PUBLIC_SUPABASE_URL: 'https://abc.supabase.co',
-  NEXT_PUBLIC_SUPABASE_ANON_KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.test',
-  SUPABASE_SERVICE_ROLE_KEY: 'service-role-key-value',
   REDIS_URL: 'redis://localhost:6379',
   REDIS_TOKEN: 'test-token',
   ENCRYPTION_KEY: 'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=',

@@ -16,10 +16,13 @@ import { Router as ExpressRouter } from 'express';
 import type { Redis } from 'ioredis';
 import { eq } from 'drizzle-orm';
 import { z } from 'zod';
-import { getEnv, encrypt, users, getDb } from '@outreachos/shared';
+import { getEnv, isDevBypassAuth, encrypt, users, getDb } from '@outreachos/shared';
 import { requireAuth } from '../middleware/auth.js';
 import { createAuthRateLimiter } from '../middleware/security.js';
 import { logger } from '../logger.js';
+
+const DEV_USER = { id: '00000000-0000-0000-0000-000000000001', email: 'dev@outreachos.local' };
+const DEV_TOKEN = 'dev-bypass-token';
 
 const signupSchema = z.object({
   email: z.string().email(),
@@ -38,14 +41,19 @@ export function authRouter(redis: Redis): Router {
   const authLimiter = createAuthRateLimiter(redis);
 
   function getSupabaseAdmin() {
-    return createClient(env.NEXT_PUBLIC_SUPABASE_URL, env.SUPABASE_SERVICE_ROLE_KEY);
+    return createClient(env.NEXT_PUBLIC_SUPABASE_URL!, env.SUPABASE_SERVICE_ROLE_KEY!);
   }
 
   function getSupabaseAnon() {
-    return createClient(env.NEXT_PUBLIC_SUPABASE_URL, env.NEXT_PUBLIC_SUPABASE_ANON_KEY);
+    return createClient(env.NEXT_PUBLIC_SUPABASE_URL!, env.NEXT_PUBLIC_SUPABASE_ANON_KEY!);
   }
 
   router.post('/signup', authLimiter, async (req, res) => {
+    if (isDevBypassAuth()) {
+      res.status(201).json({ success: true, data: { userId: DEV_USER.id } });
+      return;
+    }
+
     const parsed = signupSchema.safeParse(req.body);
     if (!parsed.success) {
       res.status(400).json({ success: false, error: parsed.error.flatten() });
@@ -71,6 +79,18 @@ export function authRouter(redis: Redis): Router {
   });
 
   router.post('/login', authLimiter, async (req, res) => {
+    if (isDevBypassAuth()) {
+      res.json({
+        success: true,
+        data: {
+          accessToken: DEV_TOKEN,
+          expiresAt: Math.floor(Date.now() / 1000) + 86400,
+          user: { id: DEV_USER.id, email: DEV_USER.email, name: 'Dev User' },
+        },
+      });
+      return;
+    }
+
     const parsed = loginSchema.safeParse(req.body);
     if (!parsed.success) {
       res.status(400).json({ success: false, error: parsed.error.flatten() });
@@ -104,13 +124,26 @@ export function authRouter(redis: Redis): Router {
   });
 
   router.post('/logout', requireAuth, async (req, res) => {
-    const supabase = getSupabaseAnon();
-    await supabase.auth.signOut();
+    if (!isDevBypassAuth()) {
+      const supabase = getSupabaseAnon();
+      await supabase.auth.signOut();
+    }
     res.clearCookie('refresh_token');
     res.json({ success: true });
   });
 
   router.post('/refresh', authLimiter, async (req, res) => {
+    if (isDevBypassAuth()) {
+      res.json({
+        success: true,
+        data: {
+          accessToken: DEV_TOKEN,
+          expiresAt: Math.floor(Date.now() / 1000) + 86400,
+        },
+      });
+      return;
+    }
+
     const refreshToken = req.cookies['refresh_token'] as string | undefined;
     if (!refreshToken) {
       res.status(401).json({ success: false, error: 'No refresh token.' });

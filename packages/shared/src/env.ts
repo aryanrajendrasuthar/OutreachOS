@@ -16,12 +16,16 @@ const serverEnvSchema = z.object({
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
   PORT: z.coerce.number().default(3001),
 
+  // Set to "true" to skip Supabase auth entirely — for local dev only
+  DEV_BYPASS_AUTH: z.enum(['true', 'false']).default('false'),
+
   NEXT_PUBLIC_APP_URL: z.string().url(),
   NEXT_PUBLIC_API_URL: z.string().url(),
 
-  NEXT_PUBLIC_SUPABASE_URL: z.string().url(),
-  NEXT_PUBLIC_SUPABASE_ANON_KEY: z.string().min(1),
-  SUPABASE_SERVICE_ROLE_KEY: z.string().min(1),
+  // Optional when DEV_BYPASS_AUTH=true
+  NEXT_PUBLIC_SUPABASE_URL: z.string().url().optional(),
+  NEXT_PUBLIC_SUPABASE_ANON_KEY: z.string().min(1).optional(),
+  SUPABASE_SERVICE_ROLE_KEY: z.string().min(1).optional(),
 
   REDIS_URL: z.string().url(),
   REDIS_TOKEN: z.string().min(1),
@@ -56,4 +60,8 @@ export function getEnv(): ServerEnv {
   }
   _env = result.data;
   return _env;
+}
+
+export function isDevBypassAuth(): boolean {
+  return getEnv().DEV_BYPASS_AUTH === 'true';
 }

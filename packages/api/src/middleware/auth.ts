@@ -12,7 +12,7 @@
 
 import { createClient } from '@supabase/supabase-js';
 import type { NextFunction, Request, Response } from 'express';
-import { getEnv } from '@outreachos/shared';
+import { getEnv, isDevBypassAuth } from '@outreachos/shared';
 import { logger } from '../logger.js';
 
 declare global {
@@ -27,7 +27,20 @@ declare global {
   }
 }
 
+// Fixed dev user injected when DEV_BYPASS_AUTH=true
+const DEV_USER = {
+  id: '00000000-0000-0000-0000-000000000001',
+  email: 'dev@outreachos.local',
+};
+
 export async function requireAuth(req: Request, res: Response, next: NextFunction): Promise<void> {
+  if (isDevBypassAuth()) {
+    logger.warn('DEV_BYPASS_AUTH is enabled — skipping auth check. Never use in production.');
+    req.user = DEV_USER;
+    next();
+    return;
+  }
+
   const authHeader = req.headers['authorization'];
   if (!authHeader?.startsWith('Bearer ')) {
     res.status(401).json({ success: false, error: 'Missing or invalid authorization header.' });
@@ -36,6 +49,11 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
 
   const token = authHeader.slice(7);
   const env = getEnv();
+
+  if (!env.NEXT_PUBLIC_SUPABASE_URL || !env.NEXT_PUBLIC_SUPABASE_ANON_KEY) {
+    res.status(500).json({ success: false, error: 'Auth not configured.' });
+    return;
+  }
 
   const supabase = createClient(env.NEXT_PUBLIC_SUPABASE_URL, env.NEXT_PUBLIC_SUPABASE_ANON_KEY, {
     global: { headers: { Authorization: `Bearer ${token}` } },
@@ -52,10 +70,6 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
   next();
 }
 
-/**
- * Asserts that the authenticated user owns the given resource.
- * Throws a 403 response if the ownership check fails.
- */
 export function assertOwnership(
   resource: { userId: string | null } | null | undefined,
   userId: string,
