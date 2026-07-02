@@ -16,7 +16,7 @@ import type { Redis } from 'ioredis';
 import { Queue } from 'bullmq';
 import { z } from 'zod';
 import { and, eq, inArray } from 'drizzle-orm';
-import { getDb, getEnv, outreachEvents, sequences, messageTemplates } from '@outreachos/shared';
+import { getDb, getEnv, outreachEvents, sequences, messageTemplates, prospects } from '@outreachos/shared';
 import { requireAuth, assertOwnership } from '../middleware/auth.js';
 
 interface OutreachJobData {
@@ -111,13 +111,37 @@ export function outreachRouter(redis: Redis): Router {
 
   router.get('/queue', async (req, res) => {
     const rows = await db()
-      .select()
+      .select({
+        id: outreachEvents.id,
+        userId: outreachEvents.userId,
+        prospectId: outreachEvents.prospectId,
+        sequenceId: outreachEvents.sequenceId,
+        eventType: outreachEvents.eventType,
+        status: outreachEvents.status,
+        messageBody: outreachEvents.messageBody,
+        scheduledAt: outreachEvents.scheduledAt,
+        sentAt: outreachEvents.sentAt,
+        aiGenerated: outreachEvents.aiGenerated,
+        errorMessage: outreachEvents.errorMessage,
+        metadata: outreachEvents.metadata,
+        prospectName: prospects.fullName,
+        prospectLinkedinUrl: prospects.linkedinUrl,
+        prospectHeadline: prospects.headline,
+      })
       .from(outreachEvents)
+      .leftJoin(prospects, eq(outreachEvents.prospectId, prospects.id))
       .where(and(eq(outreachEvents.userId, req.user.id), eq(outreachEvents.status, 'pending')));
     res.json({ success: true, data: rows });
   });
 
   router.post('/approve/:eventId', async (req, res) => {
+    const approveSchema = z.object({ messageBody: z.string().max(1000).optional() });
+    const parsed = approveSchema.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({ success: false, error: parsed.error.flatten() });
+      return;
+    }
+
     const [event] = await db()
       .select()
       .from(outreachEvents)
@@ -133,23 +157,28 @@ export function outreachRouter(redis: Redis): Router {
     const meta = (event.metadata ?? {}) as Record<string, unknown>;
     const stepNumber = typeof meta['stepNumber'] === 'number' ? meta['stepNumber'] : 1;
 
-    await outreachQueue.add(
-      'send',
-      {
-        userId: req.user.id,
-        prospectId: event.prospectId,
-        sequenceId: event.sequenceId ?? '',
-        stepNumber,
-        eventId: event.id,
-        hitlApproved: true,
-      },
-    );
+    const updatePayload: Record<string, unknown> = {
+      status: 'sent',
+      metadata: { ...(event.metadata as Record<string, unknown> ?? {}), hitlApproved: true },
+    };
+    if (parsed.data.messageBody) {
+      updatePayload['messageBody'] = parsed.data.messageBody;
+    }
 
     const [updated] = await db()
       .update(outreachEvents)
-      .set({ status: 'sent', metadata: { ...(event.metadata as Record<string, unknown> ?? {}), hitlApproved: true } })
+      .set(updatePayload)
       .where(eq(outreachEvents.id, event.id))
       .returning();
+
+    await outreachQueue.add('send', {
+      userId: req.user.id,
+      prospectId: event.prospectId,
+      sequenceId: event.sequenceId ?? '',
+      stepNumber,
+      eventId: event.id,
+      hitlApproved: true,
+    });
 
     res.json({ success: true, data: updated });
   });

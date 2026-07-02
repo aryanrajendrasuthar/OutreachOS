@@ -10,13 +10,13 @@
  * For licensing inquiries: aryanrajendrasuthar@gmail.com
  */
 
-import { Worker } from 'bullmq';
+import { Worker, Queue } from 'bullmq';
 import type { Job } from 'bullmq';
 import type { Redis } from 'ioredis';
 import pino from 'pino';
 import { eq, and, count, gte, ne } from 'drizzle-orm';
 import { Resend } from 'resend';
-import { generateConnectionNote, generateMessage } from '@outreachos/ai';
+import { generateConnectionNote, generateMessage, classifyReplyIntent } from '@outreachos/ai';
 import { LinkedInAutomationService, SessionExpiredError } from '@outreachos/automation';
 import {
   getDb,
@@ -29,6 +29,12 @@ import {
 } from '@outreachos/shared';
 import type { SequenceStep } from '@outreachos/shared';
 import type { OutreachJobData } from '../queues.js';
+
+const STEP_TYPE_MAP: Record<string, 'connection_request' | 'welcome_message' | 'follow_up'> = {
+  connection_request: 'connection_request',
+  message: 'welcome_message',
+  follow_up: 'follow_up',
+};
 
 const logger = pino({ name: 'sequenceWorker' });
 
@@ -195,8 +201,11 @@ export function createSequenceWorker(redis: Redis): Worker<OutreachJobData> {
         return;
       }
 
+      // Use user-edited body if present; otherwise AI-generate
       let messageBody: string;
-      if (step.type === 'connection_request') {
+      if (event.messageBody) {
+        messageBody = event.messageBody;
+      } else if (step.type === 'connection_request') {
         messageBody = await generateConnectionNote(prospect, template.body);
       } else {
         messageBody = await generateMessage(prospect, step, template.body);
@@ -218,21 +227,68 @@ export function createSequenceWorker(redis: Redis): Worker<OutreachJobData> {
             .update(outreachEvents)
             .set({ status: 'pending', errorMessage: 'LinkedIn session expired — please reconnect in Settings, then approve again.' })
             .where(eq(outreachEvents.id, eventId));
-          return; // don't re-throw — BullMQ won't retry, no session burning
+          return;
         }
         throw err;
       } finally {
         await automation.close();
       }
 
-      if (success) {
-        await db
-          .update(outreachEvents)
-          .set({ status: 'sent', sentAt: new Date(), messageBody, aiGenerated: true })
-          .where(eq(outreachEvents.id, eventId));
-        logger.info({ eventId, stepNumber }, 'Outreach event sent successfully');
-      } else {
+      if (!success) {
         throw new Error('Playwright action failed — will retry');
+      }
+
+      await db
+        .update(outreachEvents)
+        .set({ status: 'sent', sentAt: new Date(), messageBody, aiGenerated: !event.messageBody })
+        .where(eq(outreachEvents.id, eventId));
+      logger.info({ eventId, stepNumber }, 'Outreach event sent successfully');
+
+      // Schedule the next sequence step automatically
+      const nextStep = steps.find((s) => s.stepNumber === stepNumber + 1);
+      if (nextStep) {
+        const alreadyExists = await db
+          .select({ c: count() })
+          .from(outreachEvents)
+          .where(
+            and(
+              eq(outreachEvents.userId, userId),
+              eq(outreachEvents.prospectId, prospectId),
+              eq(outreachEvents.sequenceId, sequenceId),
+              eq(outreachEvents.eventType, STEP_TYPE_MAP[nextStep.type] ?? 'follow_up'),
+            ),
+          )
+          .then(([r]) => Number(r?.c ?? 0) > 0);
+
+        if (!alreadyExists) {
+          const scheduledAt = new Date(Date.now() + nextStep.delayDays * 24 * 60 * 60 * 1000);
+          const [nextEvent] = await db
+            .insert(outreachEvents)
+            .values({
+              userId,
+              prospectId,
+              sequenceId,
+              eventType: STEP_TYPE_MAP[nextStep.type] ?? 'follow_up',
+              status: 'pending',
+              scheduledAt,
+              metadata: { stepNumber: nextStep.stepNumber, templateId: nextStep.templateId },
+            })
+            .returning();
+
+          if (nextEvent && !user.hitlEnabled) {
+            const outreachQueue = new Queue<OutreachJobData, void, string>('outreach', {
+              connection: { url: env.REDIS_URL!, ...(env.REDIS_TOKEN ? { password: env.REDIS_TOKEN } : {}) },
+            });
+            await outreachQueue.add(
+              'send',
+              { userId, prospectId, sequenceId, stepNumber: nextStep.stepNumber, eventId: nextEvent.id, hitlApproved: false },
+              { delay: nextStep.delayDays * 24 * 60 * 60 * 1000 },
+            );
+            await outreachQueue.close();
+          }
+
+          logger.info({ prospectId, nextStep: nextStep.stepNumber }, 'Next sequence step scheduled');
+        }
       }
     },
     {

@@ -86,6 +86,10 @@ export interface OutreachEvent {
   status: string;
   errorMessage?: string;
   metadata?: Record<string, unknown>;
+  // Joined fields from /queue endpoint
+  prospectName?: string;
+  prospectLinkedinUrl?: string;
+  prospectHeadline?: string;
 }
 
 export interface MessageTemplate {
@@ -183,8 +187,12 @@ export const api = {
     enroll: (token: string, body: { prospectIds: string[]; sequenceId: string }) =>
       request('/api/outreach/enroll', { method: 'POST', body: JSON.stringify(body), token }),
     queue: (token: string) => request<OutreachEvent[]>('/api/outreach/queue', { token }),
-    approve: (token: string, eventId: string) =>
-      request(`/api/outreach/approve/${eventId}`, { method: 'POST', token }),
+    approve: (token: string, eventId: string, messageBody?: string) =>
+      request(`/api/outreach/approve/${eventId}`, {
+        method: 'POST',
+        body: JSON.stringify({ messageBody }),
+        token,
+      }),
     reject: (token: string, eventId: string, reason?: string) =>
       request(`/api/outreach/reject/${eventId}`, {
         method: 'POST',
@@ -201,6 +209,10 @@ export const api = {
     hotLeads: (token: string) => request<OutreachEvent[]>('/api/inbox/hot-leads', { token }),
     classify: (token: string, id: string) =>
       request(`/api/inbox/messages/${id}/classify`, { method: 'POST', token }),
+    reply: (token: string, id: string, body: string) =>
+      request(`/api/inbox/messages/${id}/reply`, { method: 'POST', body: JSON.stringify({ body }), token }),
+    sync: (token: string) =>
+      request<{ synced: number; created: number }>('/api/inbox/sync', { method: 'POST', token }),
   },
 
   analytics: {

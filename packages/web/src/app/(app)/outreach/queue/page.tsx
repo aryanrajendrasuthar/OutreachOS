@@ -25,7 +25,7 @@ function QueueCard({
   onReject,
 }: {
   event: OutreachEvent;
-  onApprove: (id: string) => Promise<void>;
+  onApprove: (id: string, body: string) => Promise<void>;
   onReject: (id: string) => Promise<void>;
 }) {
   const [isApproving, setIsApproving] = useState(false);
@@ -41,21 +41,28 @@ function QueueCard({
       exit={{ opacity: 0, x: -16, scale: 0.96 }}
       className="card p-5"
     >
-      <div className="flex items-center justify-between mb-4">
+      <div className="flex items-center justify-between mb-3">
         <div className="flex items-center gap-3">
-          <Badge variant="warning">
-            {event.eventType.replace(/_/g, ' ')}
-          </Badge>
-          {event.aiGenerated && (
-            <Badge variant="accent">AI-generated</Badge>
-          )}
+          <div>
+            <p className="text-sm font-semibold text-text-primary">
+              {event.prospectName ?? 'Unknown prospect'}
+            </p>
+            {event.prospectHeadline && (
+              <p className="text-xs text-text-muted mt-0.5 truncate max-w-xs">{event.prospectHeadline}</p>
+            )}
+          </div>
         </div>
-        {event.scheduledAt && (
-          <span className="text-xs text-text-muted">
-            Scheduled: {new Date(event.scheduledAt).toLocaleString()}
-          </span>
-        )}
+        <div className="flex items-center gap-2 flex-shrink-0">
+          <Badge variant="warning">{event.eventType.replace(/_/g, ' ')}</Badge>
+          {event.aiGenerated && <Badge variant="accent">AI</Badge>}
+        </div>
       </div>
+
+      {event.scheduledAt && (
+        <p className="text-xs text-text-muted mb-3">
+          Scheduled: {new Date(event.scheduledAt).toLocaleString()}
+        </p>
+      )}
 
       <div className="bg-bg-elevated border border-bg-border rounded-lg p-4 mb-4">
         {isEditing ? (
@@ -72,22 +79,24 @@ function QueueCard({
         )}
       </div>
 
+      {isEditing && (
+        <p className="text-xs text-text-muted mb-3">
+          {editedBody.length}/300 chars — your edits will be sent as-is
+        </p>
+      )}
+
       <div className="flex items-center gap-2">
         <Button
           size="sm"
           isLoading={isApproving}
           onClick={async () => {
             setIsApproving(true);
-            await onApprove(event.id);
+            await onApprove(event.id, editedBody);
           }}
         >
           ✓ Approve
         </Button>
-        <Button
-          size="sm"
-          variant="secondary"
-          onClick={() => setIsEditing((v) => !v)}
-        >
+        <Button size="sm" variant="secondary" onClick={() => setIsEditing((v) => !v)}>
           {isEditing ? 'Preview' : 'Edit'}
         </Button>
         <Button
@@ -101,6 +110,16 @@ function QueueCard({
         >
           ✗ Reject
         </Button>
+        {event.prospectLinkedinUrl && (
+          <a
+            href={event.prospectLinkedinUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="ml-auto text-xs text-accent hover:text-accent-hover"
+          >
+            View profile →
+          </a>
+        )}
       </div>
     </motion.div>
   );
@@ -120,11 +139,11 @@ export default function QueuePage() {
     });
   }, [token]);
 
-  async function handleApprove(id: string) {
+  async function handleApprove(id: string, body: string) {
     if (!token) return;
-    const res = await api.outreach.approve(token, id);
+    const res = await api.outreach.approve(token, id, body || undefined);
     if (res.success) {
-      toast('Message approved and sent.', 'success');
+      toast('Approved — sending now.', 'success');
       setEvents((prev) => prev.filter((e) => e.id !== id));
     } else {
       toast('Failed to approve.', 'error');

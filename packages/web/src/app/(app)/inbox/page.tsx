@@ -32,36 +32,77 @@ export default function InboxPage() {
   const [messages, setMessages] = useState<OutreachEvent[]>([]);
   const [selected, setSelected] = useState<OutreachEvent | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [isSyncing, setIsSyncing] = useState(false);
   const [isClassifying, setIsClassifying] = useState(false);
+  const [isSendingReply, setIsSendingReply] = useState(false);
+  const [replyBody, setReplyBody] = useState('');
   const [filter, setFilter] = useState<'all' | 'hot'>('all');
 
-  useEffect(() => {
+  function load() {
     if (!token) return;
     const fn = filter === 'hot' ? api.inbox.hotLeads : api.inbox.messages;
     void fn(token).then((res) => {
       if (res.data) setMessages(res.data);
       setIsLoading(false);
     });
-  }, [token, filter]);
+  }
+
+  useEffect(() => { load(); }, [token, filter]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  async function syncInbox() {
+    if (!token) return;
+    setIsSyncing(true);
+    toast('Checking LinkedIn inbox…', 'info');
+    const res = await api.inbox.sync(token);
+    if (res.success && res.data) {
+      toast(`Synced ${res.data.synced} threads · ${res.data.created} new replies found.`, 'success');
+      load();
+    } else {
+      toast('Sync failed — make sure LinkedIn is connected in Settings.', 'error');
+    }
+    setIsSyncing(false);
+  }
 
   async function classify(id: string) {
     if (!token) return;
     setIsClassifying(true);
     const res = await api.inbox.classify(token, id);
-    if (res.success) toast('Classification queued.', 'success');
+    if (res.success) toast('Intent classified.', 'success');
     else toast('Failed to classify.', 'error');
     setIsClassifying(false);
+  }
+
+  async function sendReply(id: string) {
+    if (!token || !replyBody.trim()) return;
+    setIsSendingReply(true);
+    const res = await api.inbox.reply(token, id, replyBody.trim());
+    if (res.success) {
+      toast('Reply sent.', 'success');
+      setReplyBody('');
+    } else {
+      toast('Failed to send reply.', 'error');
+    }
+    setIsSendingReply(false);
   }
 
   function getIntent(event: OutreachEvent): string | null {
     return (event.metadata?.['intent'] as string | undefined) ?? null;
   }
 
+  function getSenderName(event: OutreachEvent): string {
+    return (event.metadata?.['senderName'] as string | undefined) ?? event.prospectName ?? event.prospectId;
+  }
+
   return (
     <div className="flex h-[calc(100vh-48px)] gap-0">
       <div className="w-72 border-r border-bg-border flex flex-col flex-shrink-0">
         <div className="p-4 border-b border-bg-border">
-          <h1 className="text-base font-bold text-text-primary mb-3">Inbox</h1>
+          <div className="flex items-center justify-between mb-3">
+            <h1 className="text-base font-bold text-text-primary">Inbox</h1>
+            <Button size="sm" variant="secondary" isLoading={isSyncing} onClick={() => void syncInbox()}>
+              {isSyncing ? 'Syncing…' : 'Sync'}
+            </Button>
+          </div>
           <div className="flex gap-1">
             <button
               className={`text-xs px-3 py-1.5 rounded font-medium transition-colors ${filter === 'all' ? 'bg-accent text-bg-primary' : 'text-text-secondary hover:text-text-primary hover:bg-bg-elevated'}`}
@@ -98,14 +139,14 @@ export default function InboxPage() {
               return (
                 <button
                   key={msg.id}
-                  onClick={() => setSelected(msg)}
+                  onClick={() => { setSelected(msg); setReplyBody(''); }}
                   className={`w-full text-left p-4 border-b border-bg-border hover:bg-bg-elevated transition-colors ${selected?.id === msg.id ? 'bg-accent-subtle border-l-2 border-l-accent' : ''}`}
                 >
-                  <div className="flex items-start justify-between gap-2">
-                    <Avatar name={msg.prospectId} size="sm" />
+                  <div className="flex items-start gap-3">
+                    <Avatar name={getSenderName(msg)} size="sm" />
                     <div className="flex-1 min-w-0">
                       <p className="text-xs font-semibold text-text-primary truncate">
-                        {msg.eventType.replace(/_/g, ' ')}
+                        {getSenderName(msg)}
                       </p>
                       <p className="text-xs text-text-muted line-clamp-2 mt-0.5">
                         {msg.messageBody ?? 'No content'}
@@ -139,7 +180,7 @@ export default function InboxPage() {
             <div className="p-5 border-b border-bg-border flex items-center justify-between">
               <div>
                 <h2 className="text-sm font-semibold text-text-primary">
-                  {selected.eventType.replace(/_/g, ' ')}
+                  {getSenderName(selected)}
                 </h2>
                 {selected.sentAt && (
                   <p className="text-xs text-text-muted mt-0.5">
@@ -167,10 +208,19 @@ export default function InboxPage() {
               <textarea
                 className="input resize-none h-24"
                 placeholder="Write a reply..."
+                value={replyBody}
+                onChange={(e) => setReplyBody(e.target.value)}
               />
               <div className="flex items-center justify-between mt-3">
-                <Button size="sm" variant="ghost">Use AI Draft</Button>
-                <Button size="sm">Send Reply</Button>
+                <Button size="sm" variant="ghost">AI Draft</Button>
+                <Button
+                  size="sm"
+                  isLoading={isSendingReply}
+                  disabled={!replyBody.trim()}
+                  onClick={() => void sendReply(selected.id)}
+                >
+                  Send Reply
+                </Button>
               </div>
             </div>
           </motion.div>

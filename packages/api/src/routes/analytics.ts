@@ -14,7 +14,7 @@ import { Router as ExpressRouter } from 'express';
 import type { Router } from 'express';
 import { and, count, eq, gte, sql } from 'drizzle-orm';
 import { subDays } from 'date-fns';
-import { analyticsSnapshots, getDb, getEnv, outreachEvents, messageTemplates } from '@outreachos/shared';
+import { getDb, getEnv, outreachEvents, messageTemplates } from '@outreachos/shared';
 import { requireAuth } from '../middleware/auth.js';
 
 export function analyticsRouter(): Router {
@@ -84,12 +84,20 @@ export function analyticsRouter(): Router {
   });
 
   router.get('/daily', async (req, res) => {
+    const since = subDays(new Date(), 30);
+    const userId = req.user.id;
+
     const rows = await db()
-      .select()
-      .from(analyticsSnapshots)
-      .where(
-        sql`${analyticsSnapshots.userId} = ${req.user.id} AND ${analyticsSnapshots.date} >= ${subDays(new Date(), 30)}`,
-      );
+      .select({
+        date: sql<string>`to_char(date_trunc('day', ${outreachEvents.sentAt}), 'YYYY-MM-DD')`,
+        requestsSent: sql<number>`count(*) filter (where ${outreachEvents.eventType} = 'connection_request' and ${outreachEvents.status} = 'sent')`,
+        repliesReceived: sql<number>`count(*) filter (where ${outreachEvents.eventType} = 'reply_received')`,
+      })
+      .from(outreachEvents)
+      .where(and(eq(outreachEvents.userId, userId), gte(outreachEvents.sentAt, since)))
+      .groupBy(sql`date_trunc('day', ${outreachEvents.sentAt})`)
+      .orderBy(sql`date_trunc('day', ${outreachEvents.sentAt})`);
+
     res.json({ success: true, data: rows });
   });
 
