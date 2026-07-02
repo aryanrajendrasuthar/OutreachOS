@@ -19,7 +19,7 @@ import { Badge, Button, Card, Modal, useToast } from '@/components/ui';
 import { api } from '@/lib/api';
 import type { MessageTemplate } from '@/lib/api';
 
-const TEMPLATE_TYPES = ['connection_note', 'welcome', 'job_inquiry', 'follow_up', 'custom'] as const;
+const TEMPLATE_TYPES = ['connection_request', 'message', 'follow_up', 'reply'] as const;
 
 export default function TemplatesPage() {
   const { token } = useAuth();
@@ -29,7 +29,7 @@ export default function TemplatesPage() {
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [newTemplate, setNewTemplate] = useState({
     name: '',
-    type: 'connection_note' as typeof TEMPLATE_TYPES[number],
+    type: 'connection_request' as typeof TEMPLATE_TYPES[number],
     body: '',
     abVariant: '' as 'A' | 'B' | '',
   });
@@ -53,7 +53,7 @@ export default function TemplatesPage() {
     if (res.success && res.data) {
       setTemplates((prev) => [...prev, res.data!]);
       setIsCreateOpen(false);
-      setNewTemplate({ name: '', type: 'connection_note', body: '', abVariant: '' });
+      setNewTemplate({ name: '', type: 'connection_request', body: '', abVariant: '' });
       toast('Template created.', 'success');
     } else {
       toast('Failed to create template.', 'error');

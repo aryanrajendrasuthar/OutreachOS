@@ -10,4 +10,4 @@
  * For licensing inquiries: aryanrajendrasuthar@gmail.com
  */
 
-export { LinkedInAutomationService } from './LinkedInAutomationService.js';
+export { LinkedInAutomationService, SessionExpiredError } from './LinkedInAutomationService.js';

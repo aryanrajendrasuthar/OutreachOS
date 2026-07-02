@@ -15,6 +15,7 @@
 import { useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
+import { motion, AnimatePresence } from 'framer-motion';
 import {
   DndContext,
   closestCenter,
@@ -35,9 +36,17 @@ import { CSS } from '@dnd-kit/utilities';
 import { useAuth } from '@/context/AuthContext';
 import { Badge, Button, useToast } from '@/components/ui';
 import { api } from '@/lib/api';
-import type { Sequence, SequenceStep } from '@/lib/api';
+import type { Sequence, SequenceStep, MessageTemplate } from '@/lib/api';
 
-function StepCard({ step }: { step: SequenceStep }) {
+const BLANK_STEP = {
+  type: 'connection_request' as SequenceStep['type'],
+  delayDays: 0,
+  templateId: '',
+  condition: 'always' as SequenceStep['condition'],
+  skipIfReplied: true,
+};
+
+function StepCard({ step, onRemove }: { step: SequenceStep; onRemove: () => void }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: step.stepNumber,
   });
@@ -88,6 +97,11 @@ function StepCard({ step }: { step: SequenceStep }) {
         </div>
         <p className="text-xs text-text-muted font-mono">Template ID: {step.templateId}</p>
       </div>
+      <button onClick={onRemove} className="text-text-muted hover:text-status-error transition-colors ml-2 shrink-0">
+        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+        </svg>
+      </button>
     </div>
   );
 }
@@ -98,8 +112,11 @@ export default function SequenceDetailPage() {
   const { toast } = useToast();
   const [sequence, setSequence] = useState<Sequence | null>(null);
   const [steps, setSteps] = useState<SequenceStep[]>([]);
+  const [templates, setTemplates] = useState<MessageTemplate[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
+  const [isAddOpen, setIsAddOpen] = useState(false);
+  const [newStep, setNewStep] = useState(BLANK_STEP);
 
   const sensors = useSensors(
     useSensor(PointerSensor),
@@ -108,11 +125,15 @@ export default function SequenceDetailPage() {
 
   useEffect(() => {
     if (!token || !id) return;
-    void api.sequences.get(token, id).then((res) => {
-      if (res.data) {
-        setSequence(res.data);
-        setSteps(res.data.steps);
+    void Promise.all([
+      api.sequences.get(token, id),
+      api.templates.list(token),
+    ]).then(([seqRes, tplRes]) => {
+      if (seqRes.data) {
+        setSequence(seqRes.data);
+        setSteps(seqRes.data.steps);
       }
+      if (tplRes.data) setTemplates(tplRes.data);
       setIsLoading(false);
     });
   }, [token, id]);
@@ -126,6 +147,26 @@ export default function SequenceDetailPage() {
       const reordered = arrayMove(prev, oldIdx, newIdx);
       return reordered.map((s, i) => ({ ...s, stepNumber: i + 1 }));
     });
+  }
+
+  function handleAddStep() {
+    if (!newStep.templateId) return;
+    const step: SequenceStep = {
+      ...newStep,
+      stepNumber: steps.length + 1,
+      skipIfReplied: newStep.skipIfReplied,
+    };
+    setSteps((prev) => [...prev, step]);
+    setIsAddOpen(false);
+    setNewStep(BLANK_STEP);
+  }
+
+  async function removeStep(stepNumber: number) {
+    setSteps((prev) =>
+      prev
+        .filter((s) => s.stepNumber !== stepNumber)
+        .map((s, i) => ({ ...s, stepNumber: i + 1 })),
+    );
   }
 
   async function saveSteps() {
@@ -166,7 +207,7 @@ export default function SequenceDetailPage() {
           <Button size="sm" variant="secondary" isLoading={isSaving} onClick={() => void saveSteps()}>
             Save Order
           </Button>
-          <Button size="sm">+ Add Step</Button>
+          <Button size="sm" onClick={() => setIsAddOpen(true)}>+ Add Step</Button>
         </div>
       </div>
 
@@ -175,7 +216,7 @@ export default function SequenceDetailPage() {
           <div className="flex flex-col gap-3">
             {steps.map((step, i) => (
               <div key={step.stepNumber}>
-                <StepCard step={step} />
+                <StepCard step={step} onRemove={() => void removeStep(step.stepNumber)} />
                 {i < steps.length - 1 && (
                   <div className="flex justify-center my-1">
                     <div className="w-px h-4 bg-bg-border" />
@@ -192,6 +233,79 @@ export default function SequenceDetailPage() {
           No steps yet. Add a step to build your sequence.
         </div>
       )}
+
+      <AnimatePresence>
+        {isAddOpen && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-black/50 flex items-center justify-center z-50"
+            onClick={(e) => { if (e.target === e.currentTarget) setIsAddOpen(false); }}
+          >
+            <motion.div
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.95, opacity: 0 }}
+              className="card w-full max-w-md mx-4 flex flex-col gap-4"
+            >
+              <h2 className="text-base font-semibold text-text-primary">Add Step</h2>
+              <div className="flex flex-col gap-3">
+                <div>
+                  <label className="block text-xs font-medium text-text-secondary mb-1.5">Step Type</label>
+                  <select className="input w-full" value={newStep.type}
+                    onChange={(e) => setNewStep((s) => ({ ...s, type: e.target.value as SequenceStep['type'] }))}>
+                    <option value="connection_request">Connection Request</option>
+                    <option value="message">Message</option>
+                    <option value="follow_up">Follow-up</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-text-secondary mb-1.5">Template *</label>
+                  {templates.length === 0 ? (
+                    <p className="text-xs text-status-warning">No templates yet — create one first on the Templates page.</p>
+                  ) : (
+                    <select className="input w-full" value={newStep.templateId}
+                      onChange={(e) => setNewStep((s) => ({ ...s, templateId: e.target.value }))}>
+                      <option value="">Select a template…</option>
+                      {templates.map((t) => (
+                        <option key={t.id} value={t.id}>{t.name} ({t.type})</option>
+                      ))}
+                    </select>
+                  )}
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-text-secondary mb-1.5">Delay (days after previous step)</label>
+                  <input type="number" className="input w-full" min={0} max={30}
+                    value={newStep.delayDays}
+                    onChange={(e) => setNewStep((s) => ({ ...s, delayDays: Number(e.target.value) }))} />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-text-secondary mb-1.5">Condition</label>
+                  <select className="input w-full" value={newStep.condition}
+                    onChange={(e) => setNewStep((s) => ({ ...s, condition: e.target.value as SequenceStep['condition'] }))}>
+                    <option value="always">Always send</option>
+                    <option value="if_no_reply">Only if no reply</option>
+                    <option value="if_accepted">Only if accepted</option>
+                  </select>
+                </div>
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input type="checkbox" className="accent-accent"
+                    checked={newStep.skipIfReplied}
+                    onChange={(e) => setNewStep((s) => ({ ...s, skipIfReplied: e.target.checked }))} />
+                  <span className="text-xs text-text-secondary">Skip if prospect has replied</span>
+                </label>
+              </div>
+              <div className="flex gap-2 justify-end">
+                <Button variant="secondary" size="sm" onClick={() => setIsAddOpen(false)}>Cancel</Button>
+                <Button size="sm" onClick={handleAddStep} disabled={!newStep.templateId}>
+                  Add Step
+                </Button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

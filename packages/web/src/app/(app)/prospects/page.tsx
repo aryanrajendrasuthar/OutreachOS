@@ -12,7 +12,7 @@
 
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, useCallback } from 'react';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import {
   createColumnHelper,
@@ -22,12 +22,12 @@ import {
   useReactTable,
   type SortingState,
 } from '@tanstack/react-table';
-import { motion } from 'framer-motion';
+import { motion, AnimatePresence } from 'framer-motion';
 import Link from 'next/link';
 import { useAuth } from '@/context/AuthContext';
-import { Button, StatusBadge, Avatar, ProgressBar, SkeletonRow } from '@/components/ui';
+import { Button, StatusBadge, Avatar, ProgressBar, SkeletonRow, useToast } from '@/components/ui';
 import { api } from '@/lib/api';
-import type { Prospect } from '@/lib/api';
+import type { Prospect, Sequence } from '@/lib/api';
 
 const STATUS_OPTIONS = ['queued', 'requested', 'connected', 'replied', 'warm', 'interview', 'hired', 'archived', 'declined'];
 
@@ -82,13 +82,23 @@ const columns = [
   }),
 ];
 
+const BLANK_PROSPECT = { fullName: '', linkedinUrl: '', headline: '', company: '', location: '' };
+
 export default function ProspectsPage() {
   const { token } = useAuth();
+  const { toast } = useToast();
   const [prospects, setProspects] = useState<Prospect[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [statusFilter, setStatusFilter] = useState('');
   const [sorting, setSorting] = useState<SortingState>([]);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [isAddOpen, setIsAddOpen] = useState(false);
+  const [newProspect, setNewProspect] = useState(BLANK_PROSPECT);
+  const [isSaving, setIsSaving] = useState(false);
+  const [isEnrollOpen, setIsEnrollOpen] = useState(false);
+  const [sequences, setSequences] = useState<Sequence[]>([]);
+  const [enrollSeqId, setEnrollSeqId] = useState('');
+  const [isEnrolling, setIsEnrolling] = useState(false);
 
   const parentRef = useRef<HTMLDivElement>(null);
 
@@ -102,6 +112,15 @@ export default function ProspectsPage() {
       setIsLoading(false);
     });
   }, [token, statusFilter]);
+
+  const openEnroll = useCallback(() => {
+    if (!token) return;
+    void api.sequences.list(token).then((res) => {
+      if (res.data) setSequences(res.data);
+    });
+    setEnrollSeqId('');
+    setIsEnrollOpen(true);
+  }, [token]);
 
   const table = useReactTable({
     data: prospects,
@@ -137,6 +156,38 @@ export default function ProspectsPage() {
     });
   }
 
+  async function handleEnroll() {
+    if (!token || !enrollSeqId || selectedIds.size === 0) return;
+    setIsEnrolling(true);
+    const res = await api.outreach.enroll(token, {
+      prospectIds: Array.from(selectedIds),
+      sequenceId: enrollSeqId,
+    });
+    if (res.success) {
+      toast(`${selectedIds.size} prospect(s) added to sequence.`, 'success');
+      setIsEnrollOpen(false);
+      setSelectedIds(new Set());
+    } else {
+      toast('Failed to enroll prospects.', 'error');
+    }
+    setIsEnrolling(false);
+  }
+
+  async function handleAdd() {
+    if (!token || !newProspect.fullName || !newProspect.linkedinUrl) return;
+    setIsSaving(true);
+    const res = await api.prospects.create(token, newProspect);
+    if (res.success && res.data) {
+      setProspects((prev) => [res.data!, ...prev]);
+      setIsAddOpen(false);
+      setNewProspect(BLANK_PROSPECT);
+      toast('Prospect added.', 'success');
+    } else {
+      toast('Failed to add prospect.', 'error');
+    }
+    setIsSaving(false);
+  }
+
   return (
     <div className="flex flex-col h-[calc(100vh-48px)]">
       <div className="flex items-center justify-between mb-4 flex-shrink-0">
@@ -144,7 +195,7 @@ export default function ProspectsPage() {
           <h1 className="text-xl font-bold text-text-primary">Prospects</h1>
           <p className="text-sm text-text-secondary mt-0.5">{prospects.length} total</p>
         </div>
-        <Button size="sm">+ Add Prospect</Button>
+        <Button size="sm" onClick={() => setIsAddOpen(true)}>+ Add Prospect</Button>
       </div>
 
       <div className="flex items-center gap-3 mb-4 flex-shrink-0">
@@ -167,7 +218,7 @@ export default function ProspectsPage() {
           >
             <span className="text-xs text-text-secondary">{selectedIds.size} selected</span>
             <Button size="sm" variant="secondary">Archive</Button>
-            <Button size="sm" variant="secondary">Add to Sequence</Button>
+            <Button size="sm" variant="secondary" onClick={openEnroll}>Add to Sequence</Button>
           </motion.div>
         )}
       </div>
@@ -232,6 +283,107 @@ export default function ProspectsPage() {
           )}
         </div>
       </div>
+
+      <AnimatePresence>
+        {isEnrollOpen && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-black/50 flex items-center justify-center z-50"
+            onClick={(e) => { if (e.target === e.currentTarget) setIsEnrollOpen(false); }}
+          >
+            <motion.div
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.95, opacity: 0 }}
+              className="card w-full max-w-sm mx-4 flex flex-col gap-4"
+            >
+              <h2 className="text-base font-semibold text-text-primary">Add to Sequence</h2>
+              <p className="text-xs text-text-secondary">{selectedIds.size} prospect(s) selected</p>
+              {sequences.length === 0 ? (
+                <p className="text-xs text-status-warning">No sequences yet — create one on the Sequences page first.</p>
+              ) : (
+                <select className="input w-full" value={enrollSeqId}
+                  onChange={(e) => setEnrollSeqId(e.target.value)}>
+                  <option value="">Select a sequence…</option>
+                  {sequences.map((s) => (
+                    <option key={s.id} value={s.id}>{s.name}</option>
+                  ))}
+                </select>
+              )}
+              <div className="flex gap-2 justify-end">
+                <Button variant="secondary" size="sm" onClick={() => setIsEnrollOpen(false)}>Cancel</Button>
+                <Button size="sm" isLoading={isEnrolling}
+                  onClick={() => void handleEnroll()}
+                  disabled={!enrollSeqId}>
+                  Enroll
+                </Button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {isAddOpen && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-black/50 flex items-center justify-center z-50"
+            onClick={(e) => { if (e.target === e.currentTarget) setIsAddOpen(false); }}
+          >
+            <motion.div
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.95, opacity: 0 }}
+              className="card w-full max-w-md mx-4 flex flex-col gap-4"
+            >
+              <h2 className="text-base font-semibold text-text-primary">Add Prospect</h2>
+              <div className="flex flex-col gap-3">
+                <div>
+                  <label className="block text-xs font-medium text-text-secondary mb-1.5">Full Name *</label>
+                  <input className="input w-full" placeholder="Jane Smith" value={newProspect.fullName}
+                    onChange={(e) => setNewProspect((p) => ({ ...p, fullName: e.target.value }))} />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-text-secondary mb-1.5">LinkedIn URL *</label>
+                  <input className="input w-full" placeholder="https://linkedin.com/in/janesmith"
+                    value={newProspect.linkedinUrl}
+                    onChange={(e) => setNewProspect((p) => ({ ...p, linkedinUrl: e.target.value }))} />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-text-secondary mb-1.5">Headline</label>
+                  <input className="input w-full" placeholder="Engineering Manager at Acme"
+                    value={newProspect.headline}
+                    onChange={(e) => setNewProspect((p) => ({ ...p, headline: e.target.value }))} />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-text-secondary mb-1.5">Company</label>
+                  <input className="input w-full" placeholder="Acme Corp"
+                    value={newProspect.company}
+                    onChange={(e) => setNewProspect((p) => ({ ...p, company: e.target.value }))} />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-text-secondary mb-1.5">Location</label>
+                  <input className="input w-full" placeholder="San Francisco, CA"
+                    value={newProspect.location}
+                    onChange={(e) => setNewProspect((p) => ({ ...p, location: e.target.value }))} />
+                </div>
+              </div>
+              <div className="flex gap-2 justify-end">
+                <Button variant="secondary" size="sm" onClick={() => setIsAddOpen(false)}>Cancel</Button>
+                <Button size="sm" isLoading={isSaving}
+                  onClick={() => void handleAdd()}
+                  disabled={!newProspect.fullName || !newProspect.linkedinUrl}>
+                  Add Prospect
+                </Button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

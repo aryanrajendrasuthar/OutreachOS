@@ -18,7 +18,8 @@ let _pool: Pool | null = null;
 
 export function getPool(connectionString: string): Pool {
   if (!_pool) {
-    _pool = new Pool({ connectionString, ssl: { rejectUnauthorized: false } });
+    const ssl = process.env['NODE_ENV'] === 'production' ? { rejectUnauthorized: false } : false;
+    _pool = new Pool({ connectionString, ssl });
   }
   return _pool;
 }

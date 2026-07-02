@@ -20,7 +20,7 @@ const logger = pino({ name: 'queue' });
 const env = getEnv();
 
 const redis = new Redis(env.REDIS_URL, {
-  password: env.REDIS_TOKEN,
+  ...(env.REDIS_TOKEN ? { password: env.REDIS_TOKEN } : {}),
   tls: env.NODE_ENV === 'production' ? {} : undefined,
   maxRetriesPerRequest: null,
 });

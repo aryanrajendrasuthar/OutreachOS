@@ -5,6 +5,7 @@
   "description": "OutreachOS — Intelligent LinkedIn outreach automation for job seekers and recruiters",
   "author": "Aryan Suthar <aryanrajendrasuthar@gmail.com>",
   "license": "UNLICENSED",
+  "packageManager": "npm@10.0.0",
   "workspaces": [
     "packages/*"
   ],
@@ -25,7 +26,7 @@
   "devDependencies": {
     "@typescript-eslint/eslint-plugin": "^8.0.0",
     "@typescript-eslint/parser": "^8.0.0",
-    "drizzle-kit": "^0.22.0",
+    "drizzle-kit": "^0.31.10",
     "eslint": "^9.0.0",
     "eslint-config-prettier": "^9.0.0",
     "prettier": "^3.0.0",

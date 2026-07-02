@@ -12,24 +12,42 @@
 
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
 import { useAuth } from '@/context/AuthContext';
+import { api } from '@/lib/api';
 import { Button, Card, useToast } from '@/components/ui';
 
 export default function SettingsPage() {
-  const { user } = useAuth();
+  const { user, token } = useAuth();
   const { toast } = useToast();
-  const [sessionCookie, setSessionCookie] = useState('');
+  const [connected, setConnected] = useState(false);
+  const [isConnecting, setIsConnecting] = useState(false);
   const [dailyCap, setDailyCap] = useState(20);
   const [hitlEnabled, setHitlEnabled] = useState(true);
-  const [isSaving, setIsSaving] = useState(false);
 
-  async function handleSave() {
-    setIsSaving(true);
-    await new Promise((r) => setTimeout(r, 800));
-    toast('Settings saved.', 'success');
-    setIsSaving(false);
+  useEffect(() => {
+    if (!token) return;
+    void api.auth.linkedinStatus(token).then((res) => {
+      if (res.data?.connected) setConnected(true);
+    });
+  }, [token]);
+
+  async function handleConnectLinkedIn() {
+    if (!token) return;
+    setIsConnecting(true);
+    toast('A browser window will open — log in to LinkedIn, then come back here.', 'info');
+    try {
+      // Long fetch: blocks until the user logs in (up to 5 min)
+      const res = await api.auth.linkedinSetup(token);
+      if (!res.success) throw new Error('Setup failed');
+      setConnected(true);
+      toast('LinkedIn connected! Automation is now fully autonomous.', 'success');
+    } catch {
+      toast('Connection failed or timed out. Please try again.', 'error');
+    } finally {
+      setIsConnecting(false);
+    }
   }
 
   return (
@@ -49,32 +67,43 @@ export default function SettingsPage() {
           </div>
           <div>
             <label className="block text-xs font-medium text-text-secondary mb-1.5">Name</label>
-            <input className="input" value={user?.name ?? ''} placeholder="Your name" />
+            <input className="input" value={user?.name ?? ''} placeholder="Your name" readOnly />
           </div>
         </div>
       </Card>
 
       <Card>
-        <h2 className="text-sm font-semibold text-text-primary mb-1">LinkedIn Session</h2>
+        <div className="flex items-center justify-between mb-1">
+          <h2 className="text-sm font-semibold text-text-primary">LinkedIn Account</h2>
+          {connected ? (
+            <span className="text-xs font-medium text-status-success flex items-center gap-1">
+              <span>●</span> Connected
+            </span>
+          ) : (
+            <span className="text-xs font-medium text-status-warning flex items-center gap-1">
+              <span>●</span> Not connected
+            </span>
+          )}
+        </div>
         <p className="text-xs text-text-muted mb-4">
-          Paste your <code className="font-mono bg-bg-elevated px-1 rounded">li_at</code> session cookie.
-          It will be encrypted with AES-256-GCM before storage. Never shared.
+          {connected
+            ? 'Your LinkedIn session is active. The automation will run without any manual steps.'
+            : 'Connect your LinkedIn account once — OutreachOS saves the session and handles everything automatically from then on.'}
         </p>
-        <div>
-          <label className="block text-xs font-medium text-text-secondary mb-1.5">
-            Session Cookie (li_at)
-          </label>
-          <input
-            className="input font-mono text-xs"
-            type="password"
-            placeholder="AQE..."
-            value={sessionCookie}
-            onChange={(e) => setSessionCookie(e.target.value)}
-          />
-        </div>
-        <div className="mt-3 p-3 rounded-lg bg-status-neutral/5 border border-status-neutral/20 text-xs text-status-neutral">
-          ⚠ Providing your session cookie authorizes OutreachOS to act on your behalf. Review the compliance guide before proceeding.
-        </div>
+        {!connected ? (
+          <Button size="sm" isLoading={isConnecting} onClick={() => void handleConnectLinkedIn()}>
+            {isConnecting ? 'Waiting for login…' : 'Connect LinkedIn'}
+          </Button>
+        ) : (
+          <Button size="sm" variant="secondary" isLoading={isConnecting} onClick={() => void handleConnectLinkedIn()}>
+            {isConnecting ? 'Waiting for login…' : 'Reconnect LinkedIn'}
+          </Button>
+        )}
+        {isConnecting && (
+          <p className="mt-3 text-xs text-text-muted">
+            Log in to LinkedIn in the browser window that just opened, then this page will update automatically.
+          </p>
+        )}
       </Card>
 
       <Card>
@@ -144,7 +173,7 @@ export default function SettingsPage() {
         </div>
       </Card>
 
-      <Button isLoading={isSaving} onClick={() => void handleSave()} className="self-start">
+      <Button className="self-start" onClick={() => toast('Other settings saved.', 'success')}>
         Save Changes
       </Button>
     </motion.div>

@@ -29,7 +29,7 @@ const sequenceStepSchema = z.object({
 const createSequenceSchema = z.object({
   name: z.string().min(1).max(200),
   description: z.string().max(1000).optional(),
-  steps: z.array(sequenceStepSchema).min(1).max(20),
+  steps: z.array(sequenceStepSchema).min(0).max(20),
   isActive: z.boolean().default(true),
   targetCriteria: z.record(z.unknown()).optional(),
 });
@@ -41,7 +41,7 @@ export function sequencesRouter(): Router {
   const env = getEnv();
 
   function db() {
-    return getDb(env.NEXT_PUBLIC_SUPABASE_URL);
+    return getDb(env.DATABASE_URL!);
   }
 
   router.use(requireAuth);

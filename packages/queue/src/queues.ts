@@ -19,6 +19,7 @@ export interface OutreachJobData {
   sequenceId: string;
   stepNumber: number;
   eventId: string;
+  hitlApproved?: boolean;
 }
 
 export interface ScoringJobData {

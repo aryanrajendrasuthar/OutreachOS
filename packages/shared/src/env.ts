@@ -28,7 +28,7 @@ const serverEnvSchema = z.object({
   SUPABASE_SERVICE_ROLE_KEY: z.string().min(1).optional(),
 
   REDIS_URL: z.string().url(),
-  REDIS_TOKEN: z.string().min(1),
+  REDIS_TOKEN: z.string().min(1).optional(),
 
   ENCRYPTION_KEY: z
     .string()

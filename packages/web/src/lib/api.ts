@@ -136,6 +136,14 @@ export const api = {
     logout: (token: string) =>
       request('/api/auth/logout', { method: 'POST', token, credentials: 'include' }),
     me: (token: string) => request<{ id: string; email: string }>('/api/auth/me', { token }),
+    linkedinStatus: (token: string) => request<{ connected: boolean }>('/api/auth/linkedin-status', { token }),
+    linkedinSetup: (token: string) =>
+      request('/api/auth/linkedin-setup', {
+        method: 'POST',
+        token,
+        // Give 6 minutes — the server waits up to 5 min for manual login
+        signal: AbortSignal.timeout ? AbortSignal.timeout(360_000) : undefined,
+      }),
   },
 
   prospects: {
@@ -172,6 +180,8 @@ export const api = {
   },
 
   outreach: {
+    enroll: (token: string, body: { prospectIds: string[]; sequenceId: string }) =>
+      request('/api/outreach/enroll', { method: 'POST', body: JSON.stringify(body), token }),
     queue: (token: string) => request<OutreachEvent[]>('/api/outreach/queue', { token }),
     approve: (token: string, eventId: string) =>
       request(`/api/outreach/approve/${eventId}`, { method: 'POST', token }),

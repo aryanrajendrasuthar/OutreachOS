@@ -32,7 +32,7 @@ const env = getEnv();
 const app = express();
 
 const redis = new Redis(env.REDIS_URL, {
-  password: env.REDIS_TOKEN,
+  ...(env.REDIS_TOKEN ? { password: env.REDIS_TOKEN } : {}),
   tls: env.NODE_ENV === 'production' ? {} : undefined,
 });
 
@@ -55,7 +55,7 @@ app.use('/api', apiLimiter);
 app.use('/api/auth', authRouter(redis));
 app.use('/api/prospects', prospectsRouter());
 app.use('/api/sequences', sequencesRouter());
-app.use('/api/outreach', outreachRouter());
+app.use('/api/outreach', outreachRouter(redis));
 app.use('/api/inbox', inboxRouter());
 app.use('/api/analytics', analyticsRouter());
 app.use('/api/templates', templatesRouter());

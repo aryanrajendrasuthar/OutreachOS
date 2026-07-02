@@ -21,7 +21,7 @@ export function inboxRouter(): Router {
   const env = getEnv();
 
   function db() {
-    return getDb(env.NEXT_PUBLIC_SUPABASE_URL);
+    return getDb(env.DATABASE_URL!);
   }
 
   router.use(requireAuth);

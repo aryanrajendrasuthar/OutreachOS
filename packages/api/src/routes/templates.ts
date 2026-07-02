@@ -19,7 +19,7 @@ import { requireAuth, assertOwnership } from '../middleware/auth.js';
 
 const createTemplateSchema = z.object({
   name: z.string().min(1).max(200),
-  type: z.enum(['connection_note', 'welcome', 'job_inquiry', 'follow_up', 'custom']),
+  type: z.enum(['connection_request', 'message', 'follow_up', 'reply']),
   body: z.string().min(1).max(5000),
   isDefault: z.boolean().default(false),
   abVariant: z.enum(['A', 'B']).optional(),
@@ -32,7 +32,7 @@ export function templatesRouter(): Router {
   const env = getEnv();
 
   function db() {
-    return getDb(env.NEXT_PUBLIC_SUPABASE_URL);
+    return getDb(env.DATABASE_URL!);
   }
 
   router.use(requireAuth);

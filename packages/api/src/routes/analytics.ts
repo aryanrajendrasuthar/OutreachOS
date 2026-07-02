@@ -12,7 +12,7 @@
 
 import { Router as ExpressRouter } from 'express';
 import type { Router } from 'express';
-import { eq, gte, sql } from 'drizzle-orm';
+import { and, count, eq, gte, sql } from 'drizzle-orm';
 import { subDays } from 'date-fns';
 import { analyticsSnapshots, getDb, getEnv, outreachEvents, messageTemplates } from '@outreachos/shared';
 import { requireAuth } from '../middleware/auth.js';
@@ -22,47 +22,55 @@ export function analyticsRouter(): Router {
   const env = getEnv();
 
   function db() {
-    return getDb(env.NEXT_PUBLIC_SUPABASE_URL);
+    return getDb(env.DATABASE_URL!);
   }
 
   router.use(requireAuth);
 
   router.get('/overview', async (req, res) => {
     const since = subDays(new Date(), 30);
+    const userId = req.user.id;
+    const base = and(eq(outreachEvents.userId, userId), gte(outreachEvents.scheduledAt, since));
 
-    const [totals] = await db()
-      .select({
-        requestsSent: sql<number>`sum(requests_sent)`,
-        accepted: sql<number>`sum(accepted)`,
-        messagesSent: sql<number>`sum(messages_sent)`,
-        repliesReceived: sql<number>`sum(replies_received)`,
-        positiveReplies: sql<number>`sum(positive_replies)`,
-        interviewsBooked: sql<number>`sum(interviews_booked)`,
-      })
-      .from(analyticsSnapshots)
-      .where(
-        sql`${analyticsSnapshots.userId} = ${req.user.id} AND ${analyticsSnapshots.date} >= ${since}`,
-      );
+    const [requestsSent] = await db().select({ v: count() }).from(outreachEvents)
+      .where(and(base, eq(outreachEvents.eventType, 'connection_request'), eq(outreachEvents.status, 'sent')));
+    const [messagesSent] = await db().select({ v: count() }).from(outreachEvents)
+      .where(and(base, eq(outreachEvents.eventType, 'welcome_message'), eq(outreachEvents.status, 'sent')));
+    const [repliesReceived] = await db().select({ v: count() }).from(outreachEvents)
+      .where(and(base, eq(outreachEvents.eventType, 'reply_received')));
 
-    res.json({ success: true, data: totals });
+    res.json({
+      success: true,
+      data: {
+        requestsSent: Number(requestsSent?.v ?? 0),
+        accepted: 0,
+        messagesSent: Number(messagesSent?.v ?? 0),
+        repliesReceived: Number(repliesReceived?.v ?? 0),
+        positiveReplies: 0,
+        interviewsBooked: 0,
+      },
+    });
   });
 
   router.get('/funnel', async (req, res) => {
     const since = subDays(new Date(), 30);
+    const userId = req.user.id;
+    const base = and(eq(outreachEvents.userId, userId), gte(outreachEvents.scheduledAt, since));
 
-    const [funnel] = await db()
-      .select({
-        sent: sql<number>`sum(requests_sent)`,
-        accepted: sql<number>`sum(accepted)`,
-        replied: sql<number>`sum(replies_received)`,
-        interviews: sql<number>`sum(interviews_booked)`,
-      })
-      .from(analyticsSnapshots)
-      .where(
-        sql`${analyticsSnapshots.userId} = ${req.user.id} AND ${analyticsSnapshots.date} >= ${since}`,
-      );
+    const [sent] = await db().select({ v: count() }).from(outreachEvents)
+      .where(and(base, eq(outreachEvents.eventType, 'connection_request'), eq(outreachEvents.status, 'sent')));
+    const [replied] = await db().select({ v: count() }).from(outreachEvents)
+      .where(and(base, eq(outreachEvents.eventType, 'reply_received')));
 
-    res.json({ success: true, data: funnel });
+    res.json({
+      success: true,
+      data: {
+        sent: Number(sent?.v ?? 0),
+        accepted: 0,
+        replied: Number(replied?.v ?? 0),
+        interviews: 0,
+      },
+    });
   });
 
   router.get('/templates', async (req, res) => {

@@ -14,10 +14,10 @@ import { Worker } from 'bullmq';
 import type { Job } from 'bullmq';
 import type { Redis } from 'ioredis';
 import pino from 'pino';
-import { eq, and, count } from 'drizzle-orm';
+import { eq, and, count, gte, ne } from 'drizzle-orm';
 import { Resend } from 'resend';
 import { generateConnectionNote, generateMessage } from '@outreachos/ai';
-import { LinkedInAutomationService } from '@outreachos/automation';
+import { LinkedInAutomationService, SessionExpiredError } from '@outreachos/automation';
 import {
   getDb,
   getEnv,
@@ -33,7 +33,8 @@ import type { OutreachJobData } from '../queues.js';
 const logger = pino({ name: 'sequenceWorker' });
 
 function randomDelay(): Promise<void> {
-  const ms = (90 + Math.floor(Math.random() * (480 - 90))) * 1000;
+  // 3–10 minutes between requests — human pacing for bulk sends
+  const ms = (3 * 60 + Math.floor(Math.random() * 7 * 60)) * 1000;
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
@@ -49,9 +50,31 @@ async function getDailyRequestCount(db: ReturnType<typeof getDb>, userId: string
         eq(outreachEvents.userId, userId),
         eq(outreachEvents.eventType, 'connection_request'),
         eq(outreachEvents.status, 'sent'),
+        gte(outreachEvents.sentAt, today),
       ),
     );
   return Number(result?.count ?? 0);
+}
+
+async function hasExistingConnectionRequest(
+  db: ReturnType<typeof getDb>,
+  userId: string,
+  prospectId: string,
+  excludeEventId: string,
+): Promise<boolean> {
+  const [result] = await db
+    .select({ count: count() })
+    .from(outreachEvents)
+    .where(
+      and(
+        eq(outreachEvents.userId, userId),
+        eq(outreachEvents.prospectId, prospectId),
+        eq(outreachEvents.eventType, 'connection_request'),
+        eq(outreachEvents.status, 'sent'),
+        ne(outreachEvents.id, excludeEventId),
+      ),
+    );
+  return Number(result?.count ?? 0) > 0;
 }
 
 async function hasProspectReplied(
@@ -69,13 +92,13 @@ async function hasProspectReplied(
 
 export function createSequenceWorker(redis: Redis): Worker<OutreachJobData> {
   const env = getEnv();
-  const db = getDb(env.NEXT_PUBLIC_SUPABASE_URL);
+  const db = getDb(env.DATABASE_URL!);
   const resend = new Resend(env.RESEND_API_KEY);
 
   return new Worker<OutreachJobData>(
     'outreach',
     async (job: Job<OutreachJobData>) => {
-      const { userId, prospectId, sequenceId, stepNumber, eventId } = job.data;
+      const { userId, prospectId, sequenceId, stepNumber, eventId, hitlApproved } = job.data;
 
       logger.info({ jobId: job.id, prospectId, stepNumber }, 'Processing outreach job');
 
@@ -119,6 +142,16 @@ export function createSequenceWorker(redis: Redis): Worker<OutreachJobData> {
       }
 
       if (step.type === 'connection_request') {
+        const alreadySent = await hasExistingConnectionRequest(db, userId, prospectId, eventId);
+        if (alreadySent) {
+          logger.info({ prospectId }, 'Connection request already sent to this prospect — skipping');
+          await db
+            .update(outreachEvents)
+            .set({ status: 'skipped', errorMessage: 'Connection request already sent.' })
+            .where(eq(outreachEvents.id, eventId));
+          return;
+        }
+
         const dailyCount = await getDailyRequestCount(db, userId);
         if (dailyCount >= (user.dailyRequestCap ?? 20)) {
           logger.info({ userId, dailyCount }, 'Daily cap reached — requeueing tomorrow');
@@ -127,7 +160,7 @@ export function createSequenceWorker(redis: Redis): Worker<OutreachJobData> {
         }
       }
 
-      if (user.hitlEnabled) {
+      if (user.hitlEnabled && !hitlApproved) {
         await db
           .update(outreachEvents)
           .set({ status: 'pending' })
@@ -136,11 +169,15 @@ export function createSequenceWorker(redis: Redis): Worker<OutreachJobData> {
         return;
       }
 
-      if (!user.linkedinSessionCookie || !env.ENCRYPTION_KEY) {
+      const automation = new LinkedInAutomationService(userId);
+
+      const sessionReady = await automation.isSessionValid();
+      if (!sessionReady) {
         await db
           .update(outreachEvents)
-          .set({ status: 'failed', errorMessage: 'No LinkedIn session available.' })
+          .set({ status: 'pending', errorMessage: 'LinkedIn not connected — please connect in Settings.' })
           .where(eq(outreachEvents.id, eventId));
+        logger.warn({ userId }, 'No LinkedIn session profile found — event reset to pending');
         return;
       }
 
@@ -167,11 +204,6 @@ export function createSequenceWorker(redis: Redis): Worker<OutreachJobData> {
 
       await randomDelay();
 
-      const automation = new LinkedInAutomationService(
-        user.linkedinSessionCookie,
-        env.ENCRYPTION_KEY,
-      );
-
       let success = false;
       try {
         if (step.type === 'connection_request') {
@@ -179,6 +211,16 @@ export function createSequenceWorker(redis: Redis): Worker<OutreachJobData> {
         } else {
           success = await automation.sendMessage(prospect.linkedinUrl, messageBody);
         }
+      } catch (err) {
+        if (err instanceof SessionExpiredError) {
+          logger.warn({ eventId, userId }, 'LinkedIn session expired — resetting event to pending');
+          await db
+            .update(outreachEvents)
+            .set({ status: 'pending', errorMessage: 'LinkedIn session expired — please reconnect in Settings, then approve again.' })
+            .where(eq(outreachEvents.id, eventId));
+          return; // don't re-throw — BullMQ won't retry, no session burning
+        }
+        throw err;
       } finally {
         await automation.close();
       }
@@ -212,7 +254,7 @@ export function attachWorkerErrorHandlers(
 
     const { userId, eventId } = job.data;
     const env = getEnv();
-    const db = getDb(env.NEXT_PUBLIC_SUPABASE_URL);
+    const db = getDb(env.DATABASE_URL!);
 
     await db
       .update(outreachEvents)

@@ -14,9 +14,9 @@ import { createClient } from '@supabase/supabase-js';
 import type { Router } from 'express';
 import { Router as ExpressRouter } from 'express';
 import type { Redis } from 'ioredis';
-import { eq } from 'drizzle-orm';
 import { z } from 'zod';
-import { getEnv, isDevBypassAuth, encrypt, users, getDb } from '@outreachos/shared';
+import { getEnv, isDevBypassAuth } from '@outreachos/shared';
+import { LinkedInAutomationService } from '@outreachos/automation';
 import { requireAuth } from '../middleware/auth.js';
 import { createAuthRateLimiter } from '../middleware/security.js';
 import { logger } from '../logger.js';
@@ -178,26 +178,26 @@ export function authRouter(redis: Redis): Router {
     res.json({ success: true, data: { id: req.user.id, email: req.user.email } });
   });
 
-  const updateSessionSchema = z.object({
-    linkedinSessionCookie: z.string().min(10).max(4096),
+  router.get('/linkedin-status', requireAuth, async (req, res) => {
+    const automation = new LinkedInAutomationService(req.user.id);
+    const connected = await automation.isSessionValid();
+    res.json({ success: true, data: { connected } });
   });
 
-  router.patch('/session-cookie', requireAuth, async (req, res) => {
-    const parsed = updateSessionSchema.safeParse(req.body);
-    if (!parsed.success) {
-      res.status(400).json({ success: false, error: parsed.error.flatten() });
-      return;
+  // Opens a real browser window so the user can log in to LinkedIn once.
+  // Blocks until login completes (up to 5 min). Client should use a long timeout.
+  router.post('/linkedin-setup', requireAuth, async (req, res) => {
+    try {
+      logger.info({ userId: req.user.id }, 'Starting LinkedIn session setup');
+      // Set Express response timeout high enough for the user to log in
+      res.setTimeout(310_000);
+      await LinkedInAutomationService.setupSession(req.user.id);
+      logger.info({ userId: req.user.id }, 'LinkedIn session setup complete');
+      res.json({ success: true });
+    } catch (err) {
+      logger.error({ err, userId: req.user.id }, 'LinkedIn session setup failed');
+      res.status(500).json({ success: false, error: 'Setup failed or timed out. Please try again.' });
     }
-
-    const encryptedCookie = encrypt(parsed.data.linkedinSessionCookie, env.ENCRYPTION_KEY);
-    const db = getDb(env.DATABASE_URL!);
-    await db
-      .update(users)
-      .set({ linkedinSessionCookie: encryptedCookie, updatedAt: new Date() })
-      .where(eq(users.id, req.user.id));
-
-    logger.info({ userId: req.user.id }, 'LinkedIn session cookie updated');
-    res.json({ success: true });
   });
 
   return router;

@@ -13,8 +13,9 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { motion } from 'framer-motion';
+import { motion, AnimatePresence } from 'framer-motion';
 import { useAuth } from '@/context/AuthContext';
 import { Badge, Button, Card, useToast } from '@/components/ui';
 import { api } from '@/lib/api';
@@ -23,8 +24,12 @@ import type { Sequence } from '@/lib/api';
 export default function SequencesPage() {
   const { token } = useAuth();
   const { toast } = useToast();
+  const router = useRouter();
   const [sequences, setSequences] = useState<Sequence[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [isCreateOpen, setIsCreateOpen] = useState(false);
+  const [newSeq, setNewSeq] = useState({ name: '', description: '' });
+  const [isSaving, setIsSaving] = useState(false);
 
   useEffect(() => {
     if (!token) return;
@@ -33,6 +38,21 @@ export default function SequencesPage() {
       setIsLoading(false);
     });
   }, [token]);
+
+  async function handleCreate() {
+    if (!token || !newSeq.name) return;
+    setIsSaving(true);
+    const res = await api.sequences.create(token, { ...newSeq, steps: [], isActive: false });
+    if (res.success && res.data) {
+      toast('Sequence created.', 'success');
+      setIsCreateOpen(false);
+      setNewSeq({ name: '', description: '' });
+      router.push(`/sequences/${res.data.id}`);
+    } else {
+      toast('Failed to create sequence.', 'error');
+    }
+    setIsSaving(false);
+  }
 
   async function toggleActive(seq: Sequence) {
     if (!token) return;
@@ -48,7 +68,7 @@ export default function SequencesPage() {
     <div>
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-xl font-bold text-text-primary">Sequences</h1>
-        <Button size="sm">+ New Sequence</Button>
+        <Button size="sm" onClick={() => setIsCreateOpen(true)}>+ New Sequence</Button>
       </div>
 
       {isLoading ? (
@@ -117,6 +137,51 @@ export default function SequencesPage() {
           ))}
         </div>
       )}
+
+      <AnimatePresence>
+        {isCreateOpen && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-black/50 flex items-center justify-center z-50"
+            onClick={(e) => { if (e.target === e.currentTarget) setIsCreateOpen(false); }}
+          >
+            <motion.div
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.95, opacity: 0 }}
+              className="card w-full max-w-md mx-4 flex flex-col gap-4"
+            >
+              <h2 className="text-base font-semibold text-text-primary">New Sequence</h2>
+              <div className="flex flex-col gap-3">
+                <div>
+                  <label className="block text-xs font-medium text-text-secondary mb-1.5">Name *</label>
+                  <input className="input w-full" placeholder="e.g. SWE Hiring Manager Outreach"
+                    value={newSeq.name}
+                    onChange={(e) => setNewSeq((s) => ({ ...s, name: e.target.value }))} />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-text-secondary mb-1.5">Description</label>
+                  <textarea className="input w-full resize-none" rows={3}
+                    placeholder="What's this sequence for?"
+                    value={newSeq.description}
+                    onChange={(e) => setNewSeq((s) => ({ ...s, description: e.target.value }))} />
+                </div>
+                <p className="text-xs text-text-muted">You&apos;ll add steps on the next screen.</p>
+              </div>
+              <div className="flex gap-2 justify-end">
+                <Button variant="secondary" size="sm" onClick={() => setIsCreateOpen(false)}>Cancel</Button>
+                <Button size="sm" isLoading={isSaving}
+                  onClick={() => void handleCreate()}
+                  disabled={!newSeq.name}>
+                  Create &amp; Edit Steps →
+                </Button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

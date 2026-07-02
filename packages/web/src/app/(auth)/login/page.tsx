@@ -20,8 +20,8 @@ import { Button } from '@/components/ui';
 
 export default function LoginPage() {
   const { login } = useAuth();
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
+  const [email, setEmail] = useState('dev@outreachos.local');
+  const [password, setPassword] = useState('devpassword');
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
 
