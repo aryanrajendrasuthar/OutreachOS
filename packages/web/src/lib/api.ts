@@ -139,7 +139,10 @@ export const api = {
       ),
     logout: (token: string) =>
       request('/api/auth/logout', { method: 'POST', token, credentials: 'include' }),
-    me: (token: string) => request<{ id: string; email: string }>('/api/auth/me', { token }),
+    me: (token: string) =>
+      request<{ id: string; email: string; dailyRequestCap: number; hitlEnabled: boolean }>('/api/auth/me', { token }),
+    updateSettings: (token: string, body: { dailyRequestCap?: number; hitlEnabled?: boolean }) =>
+      request('/api/auth/settings', { method: 'PATCH', body: JSON.stringify(body), token }),
     linkedinStatus: (token: string) => request<{ connected: boolean }>('/api/auth/linkedin-status', { token }),
     linkedinSetup: (token: string) =>
       request('/api/auth/linkedin-setup', {
@@ -213,6 +216,8 @@ export const api = {
       request(`/api/inbox/messages/${id}/reply`, { method: 'POST', body: JSON.stringify({ body }), token }),
     sync: (token: string) =>
       request<{ synced: number; created: number }>('/api/inbox/sync', { method: 'POST', token }),
+    draft: (token: string, id: string) =>
+      request<{ drafts: string[] }>(`/api/inbox/messages/${id}/draft`, { method: 'POST', token }),
   },
 
   analytics: {

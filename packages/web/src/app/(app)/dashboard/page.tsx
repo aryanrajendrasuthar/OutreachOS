@@ -14,7 +14,6 @@
 
 import { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
-import type { Metadata } from 'next';
 import { useAuth } from '@/context/AuthContext';
 import { StatCard, SkeletonStatCard, StatusBadge, Avatar } from '@/components/ui';
 import { api } from '@/lib/api';
@@ -105,7 +104,7 @@ export default function DashboardPage() {
               <li key={event.id} className="flex items-center gap-4 px-5 py-3 border-b border-bg-border last:border-0 hover:bg-bg-elevated transition-colors">
                 <div className="flex-1 min-w-0">
                   <p className="text-sm text-text-primary truncate font-medium">
-                    {event.eventType.replace(/_/g, ' ')}
+                    {event.prospectName ?? event.eventType.replace(/_/g, ' ')}
                   </p>
                   <p className="text-xs text-text-muted truncate mt-0.5">
                     {event.messageBody?.slice(0, 80) ?? 'No preview'}

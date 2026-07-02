@@ -173,6 +173,14 @@ export default function ProspectsPage() {
     setIsEnrolling(false);
   }
 
+  async function handleArchive() {
+    if (!token || selectedIds.size === 0) return;
+    await Promise.all(Array.from(selectedIds).map((sid) => api.prospects.update(token, sid, { status: 'archived' })));
+    setProspects((prev) => prev.map((p) => selectedIds.has(p.id) ? { ...p, status: 'archived' } : p));
+    toast(`${selectedIds.size} prospect(s) archived.`, 'success');
+    setSelectedIds(new Set());
+  }
+
   async function handleAdd() {
     if (!token || !newProspect.fullName || !newProspect.linkedinUrl) return;
     setIsSaving(true);
@@ -217,7 +225,7 @@ export default function ProspectsPage() {
             className="flex items-center gap-2 ml-auto"
           >
             <span className="text-xs text-text-secondary">{selectedIds.size} selected</span>
-            <Button size="sm" variant="secondary">Archive</Button>
+            <Button size="sm" variant="secondary" onClick={() => void handleArchive()}>Archive</Button>
             <Button size="sm" variant="secondary" onClick={openEnroll}>Add to Sequence</Button>
           </motion.div>
         )}

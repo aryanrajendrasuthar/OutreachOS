@@ -15,7 +15,8 @@ import type { Router } from 'express';
 import { Router as ExpressRouter } from 'express';
 import type { Redis } from 'ioredis';
 import { z } from 'zod';
-import { getEnv, isDevBypassAuth } from '@outreachos/shared';
+import { eq } from 'drizzle-orm';
+import { getEnv, isDevBypassAuth, getDb, users } from '@outreachos/shared';
 import { LinkedInAutomationService } from '@outreachos/automation';
 import { requireAuth } from '../middleware/auth.js';
 import { createAuthRateLimiter } from '../middleware/security.js';
@@ -174,8 +175,33 @@ export function authRouter(redis: Redis): Router {
     });
   });
 
-  router.get('/me', requireAuth, (req, res) => {
-    res.json({ success: true, data: { id: req.user.id, email: req.user.email } });
+  router.get('/me', requireAuth, async (req, res) => {
+    const db = getDb(env.DATABASE_URL!);
+    const [user] = await db
+      .select({ id: users.id, email: users.email, dailyRequestCap: users.dailyRequestCap, hitlEnabled: users.hitlEnabled })
+      .from(users)
+      .where(eq(users.id, req.user.id))
+      .limit(1);
+    res.json({
+      success: true,
+      data: user ?? { id: req.user.id, email: req.user.email, dailyRequestCap: 20, hitlEnabled: true },
+    });
+  });
+
+  router.patch('/settings', requireAuth, async (req, res) => {
+    const schema = z.object({
+      dailyRequestCap: z.number().int().min(1).max(50).optional(),
+      hitlEnabled: z.boolean().optional(),
+    });
+    const parsed = schema.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({ success: false, error: parsed.error.flatten() });
+      return;
+    }
+    const db = getDb(env.DATABASE_URL!);
+    await db.update(users).set({ ...parsed.data, updatedAt: new Date() }).where(eq(users.id, req.user.id));
+    logger.info({ userId: req.user.id, settings: parsed.data }, 'User settings updated');
+    res.json({ success: true });
   });
 
   router.get('/linkedin-status', requireAuth, async (req, res) => {

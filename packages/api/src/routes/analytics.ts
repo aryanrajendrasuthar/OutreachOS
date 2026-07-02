@@ -74,12 +74,39 @@ export function analyticsRouter(): Router {
   });
 
   router.get('/templates', async (req, res) => {
+    const userId = req.user.id;
     const rows = await db()
       .select()
       .from(messageTemplates)
-      .where(eq(messageTemplates.userId, req.user.id));
+      .where(eq(messageTemplates.userId, userId));
 
-    const withPerformance = rows.map((t) => ({ id: t.id, name: t.name, type: t.type, abVariant: t.abVariant, performance: t.performance }));
+    // Compute real send/reply counts per template from outreach_events metadata
+    const perfRows = await db()
+      .select({
+        templateId: sql<string>`(${outreachEvents.metadata}->>'templateId')`,
+        sent: sql<number>`count(*) filter (where ${outreachEvents.status} = 'sent')`,
+        replied: sql<number>`count(distinct case when ${outreachEvents.eventType} = 'reply_received' then ${outreachEvents.prospectId} end)`,
+      })
+      .from(outreachEvents)
+      .where(and(eq(outreachEvents.userId, userId), sql`${outreachEvents.metadata}->>'templateId' is not null`))
+      .groupBy(sql`(${outreachEvents.metadata}->>'templateId')`);
+
+    const perfMap = Object.fromEntries(
+      perfRows.map((r) => [r.templateId, { sent: Number(r.sent), replied: Number(r.replied) }]),
+    );
+
+    const withPerformance = rows.map((t) => {
+      const p = perfMap[t.id];
+      return {
+        id: t.id,
+        name: t.name,
+        type: t.type,
+        abVariant: t.abVariant,
+        performance: p && p.sent > 0
+          ? { sent: p.sent, accepted: 0, replied: p.replied, replyRate: p.replied / p.sent }
+          : null,
+      };
+    });
     res.json({ success: true, data: withPerformance });
   });
 

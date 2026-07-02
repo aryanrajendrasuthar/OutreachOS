@@ -25,13 +25,28 @@ export default function SettingsPage() {
   const [isConnecting, setIsConnecting] = useState(false);
   const [dailyCap, setDailyCap] = useState(20);
   const [hitlEnabled, setHitlEnabled] = useState(true);
+  const [isSavingSettings, setIsSavingSettings] = useState(false);
 
   useEffect(() => {
     if (!token) return;
-    void api.auth.linkedinStatus(token).then((res) => {
-      if (res.data?.connected) setConnected(true);
+    void Promise.all([
+      api.auth.linkedinStatus(token),
+      api.auth.me(token),
+    ]).then(([status, me]) => {
+      if (status.data?.connected) setConnected(true);
+      if (me.data?.dailyRequestCap) setDailyCap(me.data.dailyRequestCap);
+      if (me.data?.hitlEnabled !== undefined) setHitlEnabled(me.data.hitlEnabled);
     });
   }, [token]);
+
+  async function handleSaveSettings() {
+    if (!token) return;
+    setIsSavingSettings(true);
+    const res = await api.auth.updateSettings(token, { dailyRequestCap: dailyCap, hitlEnabled });
+    if (res.success) toast('Settings saved.', 'success');
+    else toast('Failed to save settings.', 'error');
+    setIsSavingSettings(false);
+  }
 
   async function handleConnectLinkedIn() {
     if (!token) return;
@@ -173,7 +188,7 @@ export default function SettingsPage() {
         </div>
       </Card>
 
-      <Button className="self-start" onClick={() => toast('Other settings saved.', 'success')}>
+      <Button className="self-start" isLoading={isSavingSettings} onClick={() => void handleSaveSettings()}>
         Save Changes
       </Button>
     </motion.div>

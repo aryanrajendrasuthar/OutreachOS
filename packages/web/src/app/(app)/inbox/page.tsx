@@ -37,6 +37,8 @@ export default function InboxPage() {
   const [isSendingReply, setIsSendingReply] = useState(false);
   const [replyBody, setReplyBody] = useState('');
   const [filter, setFilter] = useState<'all' | 'hot'>('all');
+  const [drafts, setDrafts] = useState<string[]>([]);
+  const [isDrafting, setIsDrafting] = useState(false);
 
   function load() {
     if (!token) return;
@@ -70,6 +72,19 @@ export default function InboxPage() {
     if (res.success) toast('Intent classified.', 'success');
     else toast('Failed to classify.', 'error');
     setIsClassifying(false);
+  }
+
+  async function fetchDrafts(id: string) {
+    if (!token) return;
+    setIsDrafting(true);
+    setDrafts([]);
+    const res = await api.inbox.draft(token, id);
+    if (res.success && res.data?.drafts) {
+      setDrafts(res.data.drafts);
+    } else {
+      toast('Failed to generate drafts.', 'error');
+    }
+    setIsDrafting(false);
   }
 
   async function sendReply(id: string) {
@@ -139,7 +154,7 @@ export default function InboxPage() {
               return (
                 <button
                   key={msg.id}
-                  onClick={() => { setSelected(msg); setReplyBody(''); }}
+                  onClick={() => { setSelected(msg); setReplyBody(''); setDrafts([]); }}
                   className={`w-full text-left p-4 border-b border-bg-border hover:bg-bg-elevated transition-colors ${selected?.id === msg.id ? 'bg-accent-subtle border-l-2 border-l-accent' : ''}`}
                 >
                   <div className="flex items-start gap-3">
@@ -212,7 +227,9 @@ export default function InboxPage() {
                 onChange={(e) => setReplyBody(e.target.value)}
               />
               <div className="flex items-center justify-between mt-3">
-                <Button size="sm" variant="ghost">AI Draft</Button>
+                <Button size="sm" variant="ghost" isLoading={isDrafting} onClick={() => void fetchDrafts(selected.id)}>
+                  AI Draft
+                </Button>
                 <Button
                   size="sm"
                   isLoading={isSendingReply}
@@ -233,15 +250,33 @@ export default function InboxPage() {
             AI Draft Options
           </h3>
           <div className="flex flex-col gap-3">
-            {['Enthusiastic reply', 'Professional reply', 'Brief reply'].map((label, i) => (
-              <button
-                key={i}
-                className="text-left text-xs p-3 rounded-lg border border-bg-border hover:border-accent/40 hover:bg-accent-subtle transition-colors text-text-secondary"
-              >
-                <span className="font-medium text-accent block mb-1">{label}</span>
-                <span>Click to generate with AI...</span>
-              </button>
-            ))}
+            {isDrafting ? (
+              <div className="flex items-center justify-center py-8">
+                <div className="w-5 h-5 border-2 border-accent border-t-transparent rounded-full animate-spin" />
+              </div>
+            ) : drafts.length === 0 ? (
+              ['Enthusiastic reply', 'Professional reply', 'Brief reply'].map((label, i) => (
+                <button
+                  key={i}
+                  className="text-left text-xs p-3 rounded-lg border border-bg-border hover:border-accent/40 hover:bg-accent-subtle transition-colors text-text-secondary"
+                  onClick={() => void fetchDrafts(selected.id)}
+                >
+                  <span className="font-medium text-accent block mb-1">{label}</span>
+                  <span>Click to generate with AI...</span>
+                </button>
+              ))
+            ) : (
+              ['Enthusiastic reply', 'Professional reply', 'Brief reply'].map((label, i) => (
+                <button
+                  key={i}
+                  className="text-left text-xs p-3 rounded-lg border border-bg-border hover:border-accent/40 hover:bg-accent-subtle transition-colors text-text-secondary"
+                  onClick={() => setReplyBody(drafts[i] ?? '')}
+                >
+                  <span className="font-medium text-accent block mb-1">{label}</span>
+                  <span className="line-clamp-3">{drafts[i] ?? '—'}</span>
+                </button>
+              ))
+            )}
           </div>
         </div>
       )}

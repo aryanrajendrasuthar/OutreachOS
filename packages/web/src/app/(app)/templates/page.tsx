@@ -34,6 +34,9 @@ export default function TemplatesPage() {
     abVariant: '' as 'A' | 'B' | '',
   });
   const [isSaving, setIsSaving] = useState(false);
+  const [editingTemplate, setEditingTemplate] = useState<MessageTemplate | null>(null);
+  const [editDraft, setEditDraft] = useState({ name: '', type: 'connection_request' as typeof TEMPLATE_TYPES[number], body: '', abVariant: '' as 'A' | 'B' | '' });
+  const [isUpdating, setIsUpdating] = useState(false);
 
   useEffect(() => {
     if (!token) return;
@@ -68,6 +71,30 @@ export default function TemplatesPage() {
       setTemplates((prev) => prev.filter((t) => t.id !== id));
       toast('Template deleted.', 'success');
     }
+  }
+
+  function openEdit(t: MessageTemplate) {
+    setEditDraft({ name: t.name, type: t.type as typeof TEMPLATE_TYPES[number], body: t.body, abVariant: (t.abVariant ?? '') as 'A' | 'B' | '' });
+    setEditingTemplate(t);
+  }
+
+  async function handleUpdate() {
+    if (!token || !editingTemplate || !editDraft.name || !editDraft.body) return;
+    setIsUpdating(true);
+    const res = await api.templates.update(token, editingTemplate.id, {
+      name: editDraft.name,
+      type: editDraft.type,
+      body: editDraft.body,
+      ...(editDraft.abVariant ? { abVariant: editDraft.abVariant } : {}),
+    });
+    if (res.success && res.data) {
+      setTemplates((prev) => prev.map((t) => t.id === editingTemplate.id ? { ...t, ...res.data! } : t));
+      setEditingTemplate(null);
+      toast('Template updated.', 'success');
+    } else {
+      toast('Failed to update template.', 'error');
+    }
+    setIsUpdating(false);
   }
 
   async function handleClone(id: string) {
@@ -131,6 +158,9 @@ export default function TemplatesPage() {
                 )}
 
                 <div className="flex items-center gap-2 mt-3 pt-3 border-t border-bg-border">
+                  <Button size="sm" variant="ghost" onClick={() => openEdit(t)}>
+                    Edit
+                  </Button>
                   <Button size="sm" variant="ghost" onClick={() => void handleClone(t.id)}>
                     Clone
                   </Button>
@@ -143,6 +173,60 @@ export default function TemplatesPage() {
           ))}
         </div>
       )}
+
+      <Modal isOpen={!!editingTemplate} onClose={() => setEditingTemplate(null)} title="Edit Template" size="lg">
+        <div className="flex flex-col gap-4">
+          <div>
+            <label className="block text-xs font-medium text-text-secondary mb-1.5">Name</label>
+            <input
+              className="input"
+              value={editDraft.name}
+              onChange={(e) => setEditDraft((p) => ({ ...p, name: e.target.value }))}
+            />
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-xs font-medium text-text-secondary mb-1.5">Type</label>
+              <select
+                className="input"
+                value={editDraft.type}
+                onChange={(e) => setEditDraft((p) => ({ ...p, type: e.target.value as typeof TEMPLATE_TYPES[number] }))}
+              >
+                {TEMPLATE_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-text-secondary mb-1.5">A/B Variant</label>
+              <select
+                className="input"
+                value={editDraft.abVariant}
+                onChange={(e) => setEditDraft((p) => ({ ...p, abVariant: e.target.value as 'A' | 'B' | '' }))}
+              >
+                <option value="">None</option>
+                <option value="A">A</option>
+                <option value="B">B</option>
+              </select>
+            </div>
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-text-secondary mb-1.5">
+              Body <span className="text-text-muted">(use {'{{first_name}}'}, {'{{company}}'}, {'{{role}}'})</span>
+            </label>
+            <textarea
+              className="input resize-none font-mono text-xs"
+              rows={8}
+              value={editDraft.body}
+              onChange={(e) => setEditDraft((p) => ({ ...p, body: e.target.value }))}
+            />
+          </div>
+          <div className="flex justify-end gap-2">
+            <Button variant="ghost" size="sm" onClick={() => setEditingTemplate(null)}>Cancel</Button>
+            <Button size="sm" isLoading={isUpdating} onClick={() => void handleUpdate()}>
+              Save Changes
+            </Button>
+          </div>
+        </div>
+      </Modal>
 
       <Modal isOpen={isCreateOpen} onClose={() => setIsCreateOpen(false)} title="New Template" size="lg">
         <div className="flex flex-col gap-4">

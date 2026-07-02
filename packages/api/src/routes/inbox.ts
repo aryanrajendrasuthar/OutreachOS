@@ -16,7 +16,7 @@ import { and, eq, ilike } from 'drizzle-orm';
 import { getDb, getEnv, outreachEvents, prospects } from '@outreachos/shared';
 import { requireAuth, assertOwnership } from '../middleware/auth.js';
 import { LinkedInAutomationService } from '@outreachos/automation';
-import { classifyReplyIntent } from '@outreachos/ai';
+import { classifyReplyIntent, draftReply } from '@outreachos/ai';
 import { logger } from '../logger.js';
 
 export function inboxRouter(): Router {
@@ -69,7 +69,31 @@ export function inboxRouter(): Router {
       .where(eq(outreachEvents.id, req.params['id'] ?? ''))
       .limit(1);
     if (!assertOwnership(event, req.user.id, res)) return;
-    res.json({ success: true, data: { message: 'Classification job enqueued.' } });
+
+    if (event?.messageBody) {
+      const intent = await classifyReplyIntent(event.messageBody).catch(() => 'neutral');
+      await db()
+        .update(outreachEvents)
+        .set({ metadata: { ...((event.metadata as Record<string, unknown>) ?? {}), intent } })
+        .where(eq(outreachEvents.id, event.id));
+      res.json({ success: true, data: { intent } });
+    } else {
+      res.json({ success: true, data: { intent: 'neutral' } });
+    }
+  });
+
+  router.post('/messages/:id/draft', async (req, res) => {
+    const [event] = await db()
+      .select()
+      .from(outreachEvents)
+      .where(eq(outreachEvents.id, req.params['id'] ?? ''))
+      .limit(1);
+    if (!assertOwnership(event, req.user.id, res)) return;
+
+    // draftReply returns [enthusiastic, professional, brief] options
+    const thread = [{ sender: 'prospect' as const, body: event?.messageBody ?? '', sentAt: new Date() }];
+    const drafts = await draftReply(thread, 'Job seeker looking for opportunities').catch(() => ['', '', '']);
+    res.json({ success: true, data: { drafts } });
   });
 
   // Scrape LinkedIn inbox, match senders to prospects, persist reply_received events

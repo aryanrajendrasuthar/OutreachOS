@@ -46,7 +46,7 @@ const BLANK_STEP = {
   skipIfReplied: true,
 };
 
-function StepCard({ step, onRemove }: { step: SequenceStep; onRemove: () => void }) {
+function StepCard({ step, templates, onRemove }: { step: SequenceStep; templates: MessageTemplate[]; onRemove: () => void }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: step.stepNumber,
   });
@@ -95,7 +95,9 @@ function StepCard({ step, onRemove }: { step: SequenceStep; onRemove: () => void
             <Badge variant="warning">skip if replied</Badge>
           )}
         </div>
-        <p className="text-xs text-text-muted font-mono">Template ID: {step.templateId}</p>
+        <p className="text-xs text-text-muted font-mono">
+          {templates.find((t) => t.id === step.templateId)?.name ?? step.templateId}
+        </p>
       </div>
       <button onClick={onRemove} className="text-text-muted hover:text-status-error transition-colors ml-2 shrink-0">
         <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -216,7 +218,7 @@ export default function SequenceDetailPage() {
           <div className="flex flex-col gap-3">
             {steps.map((step, i) => (
               <div key={step.stepNumber}>
-                <StepCard step={step} onRemove={() => void removeStep(step.stepNumber)} />
+                <StepCard step={step} templates={templates} onRemove={() => void removeStep(step.stepNumber)} />
                 {i < steps.length - 1 && (
                   <div className="flex justify-center my-1">
                     <div className="w-px h-4 bg-bg-border" />

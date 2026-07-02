@@ -29,6 +29,8 @@ export default function ProspectDetailPage() {
   const [events, setEvents] = useState<OutreachEvent[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isScoringLoading, setIsScoringLoading] = useState(false);
+  const [notes, setNotes] = useState('');
+  const [isSavingNotes, setIsSavingNotes] = useState(false);
 
   useEffect(() => {
     if (!token || !id) return;
@@ -36,11 +38,20 @@ export default function ProspectDetailPage() {
       api.prospects.get(token, id),
       api.outreach.history(token),
     ]).then(([p, h]) => {
-      if (p.data) setProspect(p.data);
+      if (p.data) { setProspect(p.data); setNotes(p.data.notes ?? ''); }
       if (h.data) setEvents(h.data.filter((e) => e.prospectId === id));
       setIsLoading(false);
     });
   }, [token, id]);
+
+  async function saveNotes() {
+    if (!token || !id) return;
+    setIsSavingNotes(true);
+    const res = await api.prospects.update(token, id, { notes });
+    if (res.success) toast('Notes saved.', 'success');
+    else toast('Failed to save notes.', 'error');
+    setIsSavingNotes(false);
+  }
 
   async function triggerScore() {
     if (!token || !id) return;
@@ -187,14 +198,21 @@ export default function ProspectDetailPage() {
             )}
           </Card>
 
-          {prospect.notes && (
-            <Card>
-              <h2 className="text-sm font-semibold text-text-primary mb-3">Notes</h2>
-              <p className="text-sm text-text-secondary leading-relaxed whitespace-pre-wrap">
-                {prospect.notes}
-              </p>
-            </Card>
-          )}
+          <Card>
+            <div className="flex items-center justify-between mb-3">
+              <h2 className="text-sm font-semibold text-text-primary">Notes</h2>
+              <Button size="sm" variant="ghost" isLoading={isSavingNotes} onClick={() => void saveNotes()}>
+                Save
+              </Button>
+            </div>
+            <textarea
+              className="input resize-none text-sm leading-relaxed w-full"
+              rows={5}
+              placeholder="Add notes about this prospect..."
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
+            />
+          </Card>
         </div>
       </div>
     </motion.div>
